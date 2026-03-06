@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
     showTags: true,
     showImage: true,
     showAlias: true,
+    imageOnlyCards: true,
     fuzzyMatch: true,
     filterFolder: '',
     filterCategory: '',
@@ -96,7 +97,8 @@ function buildCards(app, settings) {
         // collect hints
         const nodes = fm.nodes ? (Array.isArray(fm.nodes) ? fm.nodes : String(fm.nodes).split(/[\s,]+/)) : [];
         const tags = fm.tags ? (Array.isArray(fm.tags) ? fm.tags : [fm.tags]).map(t => String(t).replace(/^#/, '')).filter(t => !t.startsWith('_')) : [];
-        const image = fm.image || null;
+        const imageRaw = fm.image || null;
+        const image = Array.isArray(imageRaw) ? (imageRaw[0] || null) : imageRaw;
         const aliases = fm.alias || fm.aliases || [];
         const aliasList = Array.isArray(aliases) ? aliases : [aliases];
 
@@ -122,6 +124,18 @@ function buildCards(app, settings) {
                 categories: categories,
                 langTags: langTags,
                 type: 'standard',
+            });
+        }
+
+        // Image-only cards: show only image, answer is filename
+        if (image && settings.imageOnlyCards) {
+            cards.push({
+                id: file.path + '::image',
+                answer: answer,
+                image: image,
+                categories: categories,
+                langTags: langTags,
+                type: 'image_only',
             });
         }
 
@@ -168,13 +182,129 @@ function selectCards(cards, reviewData, count) {
 }
 
 /* ───────────────────────────────────────────
+   Session Config Modal
+   ─────────────────────────────────────────── */
+
+function collectCategories(app, settings) {
+    const cats = new Set();
+    for (const file of app.vault.getMarkdownFiles()) {
+        if (settings.filterFolder && !file.path.startsWith(settings.filterFolder)) continue;
+        const cache = app.metadataCache.getFileCache(file);
+        if (!cache || !cache.frontmatter) continue;
+        const fmTags = cache.frontmatter.tags || [];
+        const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
+        for (const t of tagList) {
+            const s = String(t).replace(/^#/, '');
+            if (s.startsWith('_category/')) cats.add(s.replace('_category/', ''));
+        }
+        if (cache.tags) {
+            for (const t of cache.tags) {
+                const s = t.tag.replace(/^#/, '');
+                if (s.startsWith('_category/')) cats.add(s.replace('_category/', ''));
+            }
+        }
+    }
+    return [...cats].sort();
+}
+
+class SessionConfigModal extends obsidian.Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('symbolink-modal');
+
+        contentEl.createEl('h2', { text: 'Session setup' });
+
+        const s = this.plugin.settings;
+        let count = s.cardsPerSession;
+        let filterCategory = s.filterCategory || '';
+        let includeStandard = true;
+        let includeImageOnly = s.imageOnlyCards;
+        let includeAlias = true;
+
+        // Cards count
+        new obsidian.Setting(contentEl)
+            .setName('Cards')
+            .addText(text => text
+                .setValue(String(count))
+                .onChange(v => { const n = parseInt(v); if (!isNaN(n) && n > 0) count = n; }));
+
+        // Category filter
+        const categories = collectCategories(this.app, s);
+        if (categories.length > 0) {
+            const catSetting = new obsidian.Setting(contentEl).setName('Category');
+            const btnRow = catSetting.controlEl.createDiv({ cls: 'symbolink-cat-buttons' });
+
+            const makeBtn = (label, value) => {
+                const btn = btnRow.createEl('button', { text: label, cls: 'symbolink-cat-btn' });
+                if (filterCategory === value) btn.addClass('symbolink-cat-btn-active');
+                btn.addEventListener('click', () => {
+                    filterCategory = value;
+                    btnRow.querySelectorAll('.symbolink-cat-btn').forEach(b => b.removeClass('symbolink-cat-btn-active'));
+                    btn.addClass('symbolink-cat-btn-active');
+                });
+                return btn;
+            };
+
+            makeBtn('All', '');
+            for (const c of categories) makeBtn(c, c);
+        }
+
+        // Card types
+        contentEl.createEl('div', { text: 'Card types', cls: 'symbolink-section-label' });
+
+        new obsidian.Setting(contentEl)
+            .setName('Standard (nodes / tags)')
+            .addToggle(t => t.setValue(includeStandard).onChange(v => includeStandard = v));
+
+        new obsidian.Setting(contentEl)
+            .setName('Image only')
+            .addToggle(t => t.setValue(includeImageOnly).onChange(v => includeImageOnly = v));
+
+        new obsidian.Setting(contentEl)
+            .setName('Alias')
+            .addToggle(t => t.setValue(includeAlias).onChange(v => includeAlias = v));
+
+        // Buttons
+        const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
+        btnRow.style.marginTop = '1rem';
+
+        const startBtn = btnRow.createEl('button', { text: 'Start', cls: 'symbolink-btn symbolink-btn-check' });
+        const cancelBtn = btnRow.createEl('button', { text: 'Cancel', cls: 'symbolink-btn symbolink-btn-skip' });
+
+        startBtn.addEventListener('click', () => {
+            this.close();
+            new ReviewModal(this.app, this.plugin, {
+                cardsPerSession: count,
+                filterCategory,
+                includeStandard,
+                includeImageOnly,
+                includeAlias,
+            }).open();
+        });
+
+        cancelBtn.addEventListener('click', () => this.close());
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+/* ───────────────────────────────────────────
    Review Modal
    ─────────────────────────────────────────── */
 
 class ReviewModal extends obsidian.Modal {
-    constructor(app, plugin) {
+    constructor(app, plugin, sessionConfig = null) {
         super(app);
         this.plugin = plugin;
+        this.sessionConfig = sessionConfig;
         this.cards = [];
         this.currentIndex = 0;
         this.sessionCorrect = 0;
@@ -187,13 +317,24 @@ class ReviewModal extends obsidian.Modal {
         contentEl.empty();
         contentEl.addClass('symbolink-modal');
 
-        const allCards = buildCards(this.app, this.plugin.settings);
+        const sc = this.sessionConfig;
+        let allCards = buildCards(this.app, this.plugin.settings);
+        if (sc) {
+            allCards = allCards.filter(c => {
+                if (c.type === 'standard' && !sc.includeStandard) return false;
+                if (c.type === 'image_only' && !sc.includeImageOnly) return false;
+                if (c.type === 'alias_to_name' && !sc.includeAlias) return false;
+                if (sc.filterCategory && !c.categories.includes(sc.filterCategory)) return false;
+                return true;
+            });
+        }
         if (allCards.length === 0) {
             contentEl.createEl('p', { text: 'No cards found. Make sure your notes have frontmatter properties (nodes, tags, image, or alias).' });
             return;
         }
 
-        this.cards = selectCards(allCards, this.plugin.data.reviews, this.plugin.settings.cardsPerSession);
+        const sessionCount = sc ? sc.cardsPerSession : this.plugin.settings.cardsPerSession;
+        this.cards = selectCards(allCards, this.plugin.data.reviews, sessionCount);
         if (this.cards.length === 0) {
             contentEl.createEl('p', { text: 'All cards are up to date. Come back later.' });
             return;
@@ -244,15 +385,33 @@ class ReviewModal extends obsidian.Modal {
         if (card.type === 'alias_to_name') {
             hintArea.createEl('div', { text: card.aliasHint, cls: 'symbolink-alias-hint' });
             hintArea.createEl('div', { text: 'alias → filename', cls: 'symbolink-hint-label' });
-        } else {
-            if (card.image && this.plugin.settings.showImage) {
-                const imgPath = card.image;
+        } else if (card.type === 'image_only') {
+            try {
+                const imgPath = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
                 const imgFile = this.app.metadataCache.getFirstLinkpathDest(imgPath, '');
                 if (imgFile) {
-                    const imgUrl = this.app.vault.getResourcePath(imgFile);
                     const imgEl = hintArea.createEl('img', { cls: 'symbolink-image' });
-                    imgEl.src = imgUrl;
+                    imgEl.src = this.app.vault.getResourcePath(imgFile);
+                    imgEl.onerror = () => {
+                        imgEl.remove();
+                        hintArea.createEl('div', { text: '(image not found)', cls: 'symbolink-label' });
+                    };
+                } else {
+                    hintArea.createEl('div', { text: '(image not found)', cls: 'symbolink-label' });
                 }
+            } catch (e) {
+                hintArea.createEl('div', { text: '(image error)', cls: 'symbolink-label' });
+            }
+        } else {
+            if (card.image && this.plugin.settings.showImage) {
+                try {
+                    const imgPath = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
+                    const imgFile = this.app.metadataCache.getFirstLinkpathDest(imgPath, '');
+                    if (imgFile) {
+                        const imgEl = hintArea.createEl('img', { cls: 'symbolink-image' });
+                        imgEl.src = this.app.vault.getResourcePath(imgFile);
+                    }
+                } catch (e) { /* skip image on error */ }
             }
 
             if (card.nodes.length > 0 && this.plugin.settings.showNodes) {
@@ -579,6 +738,16 @@ class SymbolinkSettingTab extends obsidian.PluginSettingTab {
                 }));
 
         new obsidian.Setting(containerEl)
+            .setName('Image-only cards')
+            .setDesc('Create extra cards where only the image is shown as a hint (requires image property)')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.imageOnlyCards)
+                .onChange(async (value) => {
+                    this.plugin.settings.imageOnlyCards = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new obsidian.Setting(containerEl)
             .setName('Fuzzy matching')
             .setDesc('Ignore case and diacritics when checking answers')
             .addToggle(toggle => toggle
@@ -623,7 +792,7 @@ class SymbolinkPlugin extends obsidian.Plugin {
         this.addCommand({
             id: 'start-review',
             name: 'Start review',
-            callback: () => new ReviewModal(this.app, this).open(),
+            callback: () => new SessionConfigModal(this.app, this).open(),
         });
 
         this.addCommand({
@@ -635,7 +804,7 @@ class SymbolinkPlugin extends obsidian.Plugin {
         this.addSettingTab(new SymbolinkSettingTab(this.app, this));
 
         this.addRibbonIcon('layers', 'Symbolink: Start review', () => {
-            new ReviewModal(this.app, this).open();
+            new SessionConfigModal(this.app, this).open();
         });
     }
 

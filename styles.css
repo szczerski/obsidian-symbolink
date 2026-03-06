@@ -4,6 +4,8 @@
     padding: 16px;
     max-width: 600px;
     min-width: 350px;
+    overflow-y: auto;
+    max-height: 90vh;
 }
 
 .symbolink-header {
@@ -279,6 +281,44 @@
     font-size: 0.85em;
     color: var(--text-muted);
     flex-shrink: 0;
+}
+
+.symbolink-section-label {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 16px 0 4px;
+    padding: 0 2px;
+}
+
+.symbolink-cat-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.symbolink-cat-btn {
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-modifier-hover);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.15s, color 0.15s;
+}
+
+.symbolink-cat-btn:hover {
+    background: var(--background-modifier-border);
+    color: var(--text-normal);
+}
+
+.symbolink-cat-btn-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
 }
 
 /* Mobile */
