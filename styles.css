@@ -1,0 +1,296 @@
+/* Symbolink */
+
+.symbolink-modal {
+    padding: 16px;
+    max-width: 600px;
+    min-width: 350px;
+}
+
+.symbolink-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.symbolink-counter {
+    font-weight: 600;
+    font-size: 1.1em;
+    color: var(--text-accent);
+}
+
+.symbolink-stats {
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.symbolink-badges {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.symbolink-badge {
+    background: var(--background-modifier-hover);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.symbolink-badge-lang {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.symbolink-hints {
+    background: var(--background-secondary);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    min-height: 60px;
+}
+
+.symbolink-image {
+    max-width: 100%;
+    max-height: 250px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.symbolink-nodes,
+.symbolink-tags {
+    margin: 6px 0;
+    font-size: 1.05em;
+    line-height: 1.5;
+}
+
+.symbolink-label {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.symbolink-alias-hint {
+    font-size: 1.3em;
+    font-weight: 600;
+    text-align: center;
+    padding: 12px 0;
+}
+
+.symbolink-hint-label {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.symbolink-input-area {
+    margin-bottom: 12px;
+}
+
+.symbolink-input {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 1.1em;
+    border-radius: 6px;
+    border: 2px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.symbolink-input:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+.symbolink-input:disabled,
+.symbolink-input[readonly] {
+    opacity: 0.7;
+}
+
+.symbolink-feedback {
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+
+.symbolink-correct {
+    background: rgba(76, 175, 80, 0.15);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.symbolink-incorrect {
+    background: rgba(244, 67, 54, 0.15);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.symbolink-fb-result {
+    font-weight: 600;
+    font-size: 1.1em;
+    margin-bottom: 4px;
+}
+
+.symbolink-fb-answer {
+    font-size: 1em;
+    color: var(--text-normal);
+}
+
+.symbolink-fb-given {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.symbolink-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.symbolink-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background 0.15s;
+}
+
+.symbolink-btn-check {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.symbolink-btn-check:hover {
+    opacity: 0.9;
+}
+
+.symbolink-btn-skip,
+.symbolink-btn-open {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.symbolink-btn-skip:hover,
+.symbolink-btn-open:hover {
+    background: var(--background-modifier-border);
+}
+
+.symbolink-btn-next {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.symbolink-summary {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.symbolink-summary h2 {
+    margin-bottom: 16px;
+}
+
+.symbolink-summary-correct {
+    color: #4caf50;
+    font-size: 1.2em;
+    margin: 4px 0;
+}
+
+.symbolink-summary-incorrect {
+    color: #f44336;
+    font-size: 1.2em;
+    margin: 4px 0;
+}
+
+.symbolink-summary-pct {
+    font-size: 1.4em;
+    font-weight: 600;
+    margin: 12px 0;
+    color: var(--text-accent);
+}
+
+.symbolink-summary-total {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin-top: 12px;
+}
+
+.symbolink-stats-grid {
+    margin: 12px 0;
+}
+
+.symbolink-stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.symbolink-stat-label {
+    color: var(--text-muted);
+}
+
+.symbolink-stat-value {
+    font-weight: 600;
+}
+
+.symbolink-box-chart {
+    margin: 8px 0;
+}
+
+.symbolink-box-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+}
+
+.symbolink-box-label {
+    width: 90px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.symbolink-box-bar-bg {
+    flex: 1;
+    height: 16px;
+    background: var(--background-modifier-hover);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.symbolink-box-bar-fill {
+    height: 100%;
+    background: var(--interactive-accent);
+    border-radius: 4px;
+    transition: width 0.3s;
+    min-width: 0;
+}
+
+.symbolink-box-count {
+    width: 30px;
+    text-align: right;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* Mobile */
+.is-mobile .symbolink-modal {
+    min-width: unset;
+    padding: 12px;
+}
+
+.is-mobile .symbolink-image {
+    max-height: 180px;
+}
+
+.is-mobile .symbolink-input {
+    font-size: 16px;
+}

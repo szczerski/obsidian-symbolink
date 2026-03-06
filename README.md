@@ -1,7 +1,12 @@
-An Obsidian plugin that turns your vault into a flashcard review system using note properties.
+<p align="center">
+  <img src="assets/logo.png" width="80" alt="Symbolink logo" />
+</p>
 
+<h1 align="center">Symbolink</h1>
 
-**How it works:** 
+<p align="center">An Obsidian plugin that turns your vault into a flashcard review system using note properties.</p>
+
+**How it works:**
 
 Your frontmatter properties (`nodes`, `tags`, `image`, `alias`) become hints. The answer is always the filename (without extension). Symbolink uses a Leitner box system for spaced repetition so you review what you need, when you need it.
 
@@ -14,6 +19,13 @@ Your frontmatter properties (`nodes`, `tags`, `image`, `alias`) become hints. Th
 - **Fuzzy matching** that ignores case and diacritics
 - **Works on mobile** (iOS and Android)
 - **Review data stored separately** in the plugin's `data.json`, your notes are never modified
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/session.png" width="420" alt="Review session" />
+  <img src="assets/session_complete.png" width="420" alt="Session complete" />
+</p>
 
 ## Supported frontmatter properties
 
