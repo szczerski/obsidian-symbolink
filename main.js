@@ -16,7 +16,8 @@ const DEFAULT_SETTINGS = {
     imageOnlyCards: true,
     fuzzyMatch: true,
     filterFolder: '',
-    filterCategory: '',
+    filterLang: '',
+    filterField: '',
 };
 
 /* ───────────────────────────────────────────
@@ -68,31 +69,15 @@ function buildCards(app, settings) {
         const fm = cache.frontmatter;
         const answer = file.basename;
 
-        // detect category from tags like _category/EN
-        let categories = [];
         const fmTags = fm.tags || [];
         const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
-        for (const t of tagList) {
-            const s = String(t).replace(/^#/, '');
-            if (s.startsWith('_category/')) {
-                categories.push(s.replace('_category/', ''));
-            }
-        }
 
-        if (cache.tags) {
-            for (const t of cache.tags) {
-                const s = t.tag.replace(/^#/, '');
-                if (s.startsWith('_category/')) {
-                    categories.push(s.replace('_category/', ''));
-                }
-            }
+        // Skip cards marked with _category (excluded from study)
+        let hasCategory = tagList.some(t => String(t).replace(/^#/, '').startsWith('_category/'));
+        if (!hasCategory && cache.tags) {
+            hasCategory = cache.tags.some(t => t.tag.replace(/^#/, '').startsWith('_category/'));
         }
-
-        if (settings.filterCategory) {
-            if (!categories.includes(settings.filterCategory)) {
-                continue;
-            }
-        }
+        if (hasCategory) continue;
 
         // collect hints
         const nodes = fm.nodes ? (Array.isArray(fm.nodes) ? fm.nodes : String(fm.nodes).split(/[\s,]+/)) : [];
@@ -103,10 +88,17 @@ function buildCards(app, settings) {
         const aliasList = Array.isArray(aliases) ? aliases : [aliases];
 
         let langTags = [];
+        let fieldTags = [];
         for (const t of tagList) {
             const s = String(t).replace(/^#/, '');
-            if (s.startsWith('_lang/') || s.startsWith('§/lang/')) {
-                langTags.push(s);
+            if (s.startsWith('_lang/')) langTags.push(s.replace('_lang/', ''));
+            if (s.startsWith('_field/')) fieldTags.push(s.replace('_field/', ''));
+        }
+        if (cache.tags) {
+            for (const t of cache.tags) {
+                const s = t.tag.replace(/^#/, '');
+                if (s.startsWith('_lang/') && !langTags.includes(s.replace('_lang/', ''))) langTags.push(s.replace('_lang/', ''));
+                if (s.startsWith('_field/') && !fieldTags.includes(s.replace('_field/', ''))) fieldTags.push(s.replace('_field/', ''));
             }
         }
 
@@ -121,8 +113,8 @@ function buildCards(app, settings) {
                 nodes: nodes,
                 tags: tags,
                 image: image,
-                categories: categories,
                 langTags: langTags,
+                fieldTags: fieldTags,
                 type: 'standard',
             });
         }
@@ -133,8 +125,8 @@ function buildCards(app, settings) {
                 id: file.path + '::image',
                 answer: answer,
                 image: image,
-                categories: categories,
                 langTags: langTags,
+                fieldTags: fieldTags,
                 type: 'image_only',
             });
         }
@@ -149,8 +141,8 @@ function buildCards(app, settings) {
                 nodes: [],
                 tags: [],
                 image: null,
-                categories: categories,
                 langTags: langTags,
+                fieldTags: fieldTags,
                 type: 'alias_to_name',
             });
         }
@@ -185,27 +177,32 @@ function selectCards(cards, reviewData, count) {
    Session Config Modal
    ─────────────────────────────────────────── */
 
-function collectCategories(app, settings) {
-    const cats = new Set();
+function collectByPrefix(app, settings, prefix) {
+    const values = new Set();
     for (const file of app.vault.getMarkdownFiles()) {
         if (settings.filterFolder && !file.path.startsWith(settings.filterFolder)) continue;
         const cache = app.metadataCache.getFileCache(file);
-        if (!cache || !cache.frontmatter) continue;
-        const fmTags = cache.frontmatter.tags || [];
-        const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
-        for (const t of tagList) {
-            const s = String(t).replace(/^#/, '');
-            if (s.startsWith('_category/')) cats.add(s.replace('_category/', ''));
+        if (!cache) continue;
+        if (cache.frontmatter) {
+            const fmTags = cache.frontmatter.tags || [];
+            const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
+            for (const t of tagList) {
+                const s = String(t).replace(/^#/, '');
+                if (s.startsWith(prefix)) values.add(s.replace(prefix, ''));
+            }
         }
         if (cache.tags) {
             for (const t of cache.tags) {
                 const s = t.tag.replace(/^#/, '');
-                if (s.startsWith('_category/')) cats.add(s.replace('_category/', ''));
+                if (s.startsWith(prefix)) values.add(s.replace(prefix, ''));
             }
         }
     }
-    return [...cats].sort();
+    return [...values].sort();
 }
+
+function collectLanguages(app, settings) { return collectByPrefix(app, settings, '_lang/'); }
+function collectFields(app, settings) { return collectByPrefix(app, settings, '_field/'); }
 
 class SessionConfigModal extends obsidian.Modal {
     constructor(app, plugin) {
@@ -222,7 +219,8 @@ class SessionConfigModal extends obsidian.Modal {
 
         const s = this.plugin.settings;
         let count = s.cardsPerSession;
-        let filterCategory = s.filterCategory || '';
+        let filterLang = s.filterLang || '';
+        let filterField = s.filterField || '';
         let includeStandard = true;
         let includeImageOnly = s.imageOnlyCards;
         let includeAlias = true;
@@ -234,25 +232,36 @@ class SessionConfigModal extends obsidian.Modal {
                 .setValue(String(count))
                 .onChange(v => { const n = parseInt(v); if (!isNaN(n) && n > 0) count = n; }));
 
-        // Category filter
-        const categories = collectCategories(this.app, s);
-        if (categories.length > 0) {
-            const catSetting = new obsidian.Setting(contentEl).setName('Category');
-            const btnRow = catSetting.controlEl.createDiv({ cls: 'symbolink-cat-buttons' });
-
+        // Language filter
+        const makeBtnGroup = (setting, current, onChange) => {
+            const row = setting.controlEl.createDiv({ cls: 'symbolink-cat-buttons' });
             const makeBtn = (label, value) => {
-                const btn = btnRow.createEl('button', { text: label, cls: 'symbolink-cat-btn' });
-                if (filterCategory === value) btn.addClass('symbolink-cat-btn-active');
+                const btn = row.createEl('button', { text: label, cls: 'symbolink-cat-btn' });
+                if (current === value) btn.addClass('symbolink-cat-btn-active');
                 btn.addEventListener('click', () => {
-                    filterCategory = value;
-                    btnRow.querySelectorAll('.symbolink-cat-btn').forEach(b => b.removeClass('symbolink-cat-btn-active'));
+                    onChange(value);
+                    row.querySelectorAll('.symbolink-cat-btn').forEach(b => b.removeClass('symbolink-cat-btn-active'));
                     btn.addClass('symbolink-cat-btn-active');
                 });
-                return btn;
             };
+            return makeBtn;
+        };
 
+        const languages = collectLanguages(this.app, s);
+        if (languages.length > 0) {
+            const langSetting = new obsidian.Setting(contentEl).setName('Language');
+            const makeBtn = makeBtnGroup(langSetting, filterLang, v => filterLang = v);
             makeBtn('All', '');
-            for (const c of categories) makeBtn(c, c);
+            for (const l of languages) makeBtn(l, l);
+        }
+
+        // Field filter
+        const fields = collectFields(this.app, s);
+        if (fields.length > 0) {
+            const fieldSetting = new obsidian.Setting(contentEl).setName('Field');
+            const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
+            makeBtn('All', '');
+            for (const f of fields) makeBtn(f, f);
         }
 
         // Card types
@@ -281,7 +290,8 @@ class SessionConfigModal extends obsidian.Modal {
             this.close();
             new ReviewModal(this.app, this.plugin, {
                 cardsPerSession: count,
-                filterCategory,
+                filterLang,
+                filterField,
                 includeStandard,
                 includeImageOnly,
                 includeAlias,
@@ -324,7 +334,8 @@ class ReviewModal extends obsidian.Modal {
                 if (c.type === 'standard' && !sc.includeStandard) return false;
                 if (c.type === 'image_only' && !sc.includeImageOnly) return false;
                 if (c.type === 'alias_to_name' && !sc.includeAlias) return false;
-                if (sc.filterCategory && !c.categories.includes(sc.filterCategory)) return false;
+                if (sc.filterLang && !c.langTags.includes(sc.filterLang)) return false;
+                if (sc.filterField && !c.fieldTags.includes(sc.filterField)) return false;
                 return true;
             });
         }
@@ -368,14 +379,14 @@ class ReviewModal extends obsidian.Modal {
             : 'new card';
         header.createEl('span', { text: statsText, cls: 'symbolink-stats' });
 
-        // Category / language badges
-        if (card.categories.length > 0 || card.langTags.length > 0) {
+        // Language / field badges
+        if ((card.langTags && card.langTags.length > 0) || (card.fieldTags && card.fieldTags.length > 0)) {
             const badgeRow = contentEl.createDiv({ cls: 'symbolink-badges' });
-            for (const c of card.categories) {
-                badgeRow.createEl('span', { text: c, cls: 'symbolink-badge' });
-            }
-            for (const lt of card.langTags) {
+            for (const lt of (card.langTags || [])) {
                 badgeRow.createEl('span', { text: lt, cls: 'symbolink-badge symbolink-badge-lang' });
+            }
+            for (const ft of (card.fieldTags || [])) {
+                badgeRow.createEl('span', { text: ft, cls: 'symbolink-badge symbolink-badge-field' });
             }
         }
 
@@ -769,13 +780,24 @@ class SymbolinkSettingTab extends obsidian.PluginSettingTab {
                 }));
 
         new obsidian.Setting(containerEl)
-            .setName('Filter by category')
-            .setDesc('e.g. EN, PL (empty = all)')
+            .setName('Default language filter')
+            .setDesc('Tag value after _lang/ (empty = all)')
             .addText(text => text
                 .setPlaceholder('e.g. EN')
-                .setValue(this.plugin.settings.filterCategory)
+                .setValue(this.plugin.settings.filterLang)
                 .onChange(async (value) => {
-                    this.plugin.settings.filterCategory = value;
+                    this.plugin.settings.filterLang = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new obsidian.Setting(containerEl)
+            .setName('Default field filter')
+            .setDesc('Tag value after _field/ (empty = all)')
+            .addText(text => text
+                .setPlaceholder('e.g. architecture')
+                .setValue(this.plugin.settings.filterField)
+                .onChange(async (value) => {
+                    this.plugin.settings.filterField = value;
                     await this.plugin.saveSettings();
                 }));
     }

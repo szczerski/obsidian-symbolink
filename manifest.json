@@ -1,7 +1,7 @@
 {
   "id": "symbolink",
   "name": "Symbolink",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "minAppVersion": "1.0.0",
   "description": "Flashcard review using note properties. Turns your vault into a spaced repetition system: nodes, tags, images and aliases become hints, the filename is always the answer.",
   "author": "szczerski",
