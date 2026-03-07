@@ -456,7 +456,7 @@ class ReviewModal extends obsidian.Modal {
         const skipBtn = btnRow.createEl('button', { text: 'Skip', cls: 'symbolink-btn symbolink-btn-skip' });
         const nextBtn = btnRow.createEl('button', { text: 'Next →', cls: 'symbolink-btn symbolink-btn-next' });
         nextBtn.style.display = 'none';
-        const openBtn = btnRow.createEl('button', { text: 'Open note', cls: 'symbolink-btn symbolink-btn-open' });
+        const openBtn = btnRow.createEl('button', { text: 'Open in tab', cls: 'symbolink-btn symbolink-btn-open' });
         openBtn.style.display = 'none';
 
         const doCheck = () => {
@@ -520,8 +520,7 @@ class ReviewModal extends obsidian.Modal {
             const basePath = card.id.split('::')[0];
             const file = this.app.vault.getAbstractFileByPath(basePath);
             if (file) {
-                this.close();
-                this.app.workspace.getLeaf(false).openFile(file);
+                this.app.workspace.getLeaf('tab').openFile(file);
             }
         });
 
