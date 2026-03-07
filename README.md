@@ -15,7 +15,9 @@ Your frontmatter properties (`nodes`, `tags`, `image`, `alias`) become hints. Th
 - **Type-in answers** instead of just flipping cards
 - **Spaced repetition** with 7 Leitner boxes (0, 1, 3, 7, 14, 30, 60 day intervals)
 - **Multiple hint types:** nodes, tags, images, aliases
-- **Category filtering** via `_category/*` tags (e.g. `_category/EN`, `_category/PL`)
+- **Language filtering** via `_lang/*` tags (e.g. `_lang/EN`, `_lang/PL`)
+- **Field filtering** via `_field/*` tags (e.g. `_field/architecture`, `_field/painting`)
+- **Exclude cards** by tagging them with `_category/*` — they won't appear in study at all
 - **Fuzzy matching** that ignores case and diacritics
 - **Works on mobile** (iOS and Android)
 - **Review data stored separately** in the plugin's `data.json`, your notes are never modified
@@ -38,9 +40,13 @@ Your frontmatter properties (`nodes`, `tags`, `image`, `alias`) become hints. Th
 
 ### Special tags
 
-- `_category/EN`, `_category/PL`, etc. are used for filtering cards by category
-- `_lang/EN`, `§/lang/EN`, etc. are displayed as language badges on cards
-- All `_` prefixed tags are hidden from the hint display
+| Tag | Effect |
+|-----|--------|
+| `_category/X` | **Excludes** the card from study entirely |
+| `_lang/EN`, `_lang/PL`, etc. | Language label — used as a session filter and shown as a badge |
+| `_field/architecture`, `_field/painting`, etc. | Field/domain label — used as a session filter and shown as a badge |
+
+All `_` prefixed tags are hidden from the hint display.
 
 ## Installation
 
@@ -66,7 +72,8 @@ Your frontmatter properties (`nodes`, `tags`, `image`, `alias`) become hints. Th
 | Show image | Display image as a visual hint | On |
 | Fuzzy matching | Ignore case and diacritics | On |
 | Filter by folder | Only include notes from a specific folder | (empty = all) |
-| Filter by category | Only include notes with a specific `_category/*` tag | (empty = all) |
+| Default language filter | Pre-select a `_lang/*` value in the session menu | (empty = all) |
+| Default field filter | Pre-select a `_field/*` value in the session menu | (empty = all) |
 
 ## How the algorithm works
 
