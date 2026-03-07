@@ -131,6 +131,11 @@
     border: 1px solid rgba(244, 67, 54, 0.3);
 }
 
+.symbolink-hint-used {
+    background: rgba(255, 152, 0, 0.15);
+    border: 1px solid rgba(255, 152, 0, 0.4);
+}
+
 .symbolink-fb-result {
     font-weight: 600;
     font-size: 1.1em;
@@ -170,6 +175,24 @@
 
 .symbolink-btn-check:hover {
     opacity: 0.9;
+}
+
+.symbolink-btn-hint {
+    background: rgba(255, 152, 0, 0.15);
+    color: var(--text-normal);
+    border: 1px solid rgba(255, 152, 0, 0.4);
+}
+
+.symbolink-btn-hint:hover {
+    background: rgba(255, 152, 0, 0.25);
+}
+
+.symbolink-hint-letters {
+    font-size: 1.2em;
+    letter-spacing: 0.15em;
+    color: rgba(255, 152, 0, 0.9);
+    font-family: monospace;
+    margin-bottom: 8px;
 }
 
 .symbolink-btn-skip,

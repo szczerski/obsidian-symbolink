@@ -438,13 +438,26 @@ class ReviewModal extends obsidian.Modal {
             }
         }
 
+        // Hint display
+        let lettersRevealed = 0;
+        let hintUsed = false;
+
         // Input
         const inputArea = contentEl.createDiv({ cls: 'symbolink-input-area' });
+        const hintEl = inputArea.createDiv({ cls: 'symbolink-hint-letters' });
+        hintEl.style.display = 'none';
         const input = inputArea.createEl('input', {
             type: 'text',
             placeholder: 'Type your answer...',
             cls: 'symbolink-input',
         });
+
+        const updateHintEl = () => {
+            hintEl.style.display = 'block';
+            hintEl.setText(
+                card.answer.split('').map((c, i) => i < lettersRevealed ? c : '_').join(' ')
+            );
+        };
 
         // Feedback (hidden)
         const feedback = contentEl.createDiv({ cls: 'symbolink-feedback' });
@@ -453,11 +466,19 @@ class ReviewModal extends obsidian.Modal {
         // Buttons
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
         const checkBtn = btnRow.createEl('button', { text: 'Check', cls: 'symbolink-btn symbolink-btn-check' });
+        const hintBtn = btnRow.createEl('button', { text: 'Hint', cls: 'symbolink-btn symbolink-btn-hint' });
         const skipBtn = btnRow.createEl('button', { text: 'Skip', cls: 'symbolink-btn symbolink-btn-skip' });
         const nextBtn = btnRow.createEl('button', { text: 'Next →', cls: 'symbolink-btn symbolink-btn-next' });
         nextBtn.style.display = 'none';
         const openBtn = btnRow.createEl('button', { text: 'Open in tab', cls: 'symbolink-btn symbolink-btn-open' });
         openBtn.style.display = 'none';
+
+        hintBtn.addEventListener('click', () => {
+            if (this.revealed) return;
+            if (lettersRevealed < card.answer.length) lettersRevealed++;
+            hintUsed = true;
+            updateHintEl();
+        });
 
         const doCheck = () => {
             if (this.revealed) return;
@@ -469,7 +490,22 @@ class ReviewModal extends obsidian.Modal {
             feedback.style.display = 'block';
             feedback.empty();
 
-            if (correct) {
+            if (hintUsed) {
+                feedback.addClass('symbolink-hint-used');
+                feedback.removeClass('symbolink-correct');
+                feedback.removeClass('symbolink-incorrect');
+                if (correct) {
+                    feedback.createEl('div', { text: '~ Correct with hint', cls: 'symbolink-fb-result' });
+                } else {
+                    feedback.createEl('div', { text: '✗ Wrong', cls: 'symbolink-fb-result' });
+                    feedback.createEl('div', { text: `Answer: ${card.answer}`, cls: 'symbolink-fb-answer' });
+                    if (given.trim() !== '') {
+                        feedback.createEl('div', { text: `Your answer: ${given}`, cls: 'symbolink-fb-given' });
+                    }
+                }
+                this.sessionIncorrect++;
+                this.recordReview(card.id, false);
+            } else if (correct) {
                 feedback.addClass('symbolink-correct');
                 feedback.removeClass('symbolink-incorrect');
                 feedback.createEl('div', { text: '✓ Correct!', cls: 'symbolink-fb-result' });
@@ -489,6 +525,7 @@ class ReviewModal extends obsidian.Modal {
 
             input.readOnly = true;
             checkBtn.style.display = 'none';
+            hintBtn.style.display = 'none';
             skipBtn.style.display = 'none';
             nextBtn.style.display = 'inline-block';
             openBtn.style.display = 'inline-block';
