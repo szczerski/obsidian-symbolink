@@ -325,7 +325,7 @@ class SessionConfigModal extends obsidian.Modal {
         this.plugin = plugin;
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass('symbolink-modal');
@@ -340,6 +340,16 @@ class SessionConfigModal extends obsidian.Modal {
         let includeImageOnly = s.imageOnlyCards;
         let includeAlias = true;
         let includeCallouts = true;
+
+        const allCards = await buildCards(this.app, s);
+        const langSet = new Set();
+        const fieldSet = new Set();
+        for (const c of allCards) {
+            c.langTags.forEach(t => langSet.add(t));
+            c.fieldTags.forEach(t => fieldSet.add(t));
+        }
+        const languages = [...langSet].sort();
+        const fields = [...fieldSet].sort();
 
         // Cards count
         new obsidian.Setting(contentEl)
@@ -363,7 +373,6 @@ class SessionConfigModal extends obsidian.Modal {
             return makeBtn;
         };
 
-        const languages = collectLanguages(this.app, s);
         if (languages.length > 0) {
             const langSetting = new obsidian.Setting(contentEl).setName('Language');
             const makeBtn = makeBtnGroup(langSetting, filterLang, v => filterLang = v);
@@ -372,7 +381,6 @@ class SessionConfigModal extends obsidian.Modal {
         }
 
         // Field filter
-        const fields = collectFields(this.app, s);
         if (fields.length > 0) {
             const fieldSetting = new obsidian.Setting(contentEl).setName('Field');
             const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
@@ -648,6 +656,14 @@ class ReviewModal extends obsidian.Modal {
                 this.sessionIncorrect++;
                 this.recordReview(card.id, false);
             }
+            const revData = this.plugin.data.reviews[card.id];
+            if (revData) {
+                const statsEl = feedback.createDiv({ cls: 'symbolink-card-stats-inline' });
+                const totalPlays = revData.correct + revData.incorrect;
+                const acc = totalPlays > 0 ? Math.round((revData.correct / totalPlays) * 100) : 0;
+                statsEl.createEl('div', { text: `📊 Odpowiedzi: ${totalPlays} (Poprawne: ${revData.correct}, Błędne: ${revData.incorrect}) · Trafność: ${acc}%` });
+                statsEl.createEl('div', { text: `📦 Pudełko: ${revData.box} · Następna powtórka: ${revData.nextReview}` });
+            }
 
             input.readOnly = true;
             checkBtn.style.display = 'none';
@@ -760,6 +776,12 @@ class ReviewModal extends obsidian.Modal {
 
         const closeBtn = btnRow.createEl('button', { text: 'Close', cls: 'symbolink-btn symbolink-btn-skip' });
         closeBtn.addEventListener('click', () => this.close());
+
+        const statsBtn = btnRow.createEl('button', { text: 'Stats & Heatmap', cls: 'symbolink-btn' });
+        statsBtn.addEventListener('click', () => {
+            this.close();
+            new StatsModal(this.app, this.plugin).open();
+        });
     }
 
     onClose() {
