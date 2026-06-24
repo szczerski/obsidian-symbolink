@@ -339,6 +339,7 @@ class SessionConfigModal extends obsidian.Modal {
         let includeStandard = true;
         let includeImageOnly = s.imageOnlyCards;
         let includeAlias = true;
+        let includeCallouts = true;
 
         // Cards count
         new obsidian.Setting(contentEl)
@@ -394,6 +395,10 @@ class SessionConfigModal extends obsidian.Modal {
             .setName('Alias')
             .addToggle(t => t.setValue(includeAlias).onChange(v => includeAlias = v));
 
+        new obsidian.Setting(contentEl)
+            .setName('Callouts')
+            .addToggle(t => t.setValue(includeCallouts).onChange(v => includeCallouts = v));
+
         // Buttons
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
         btnRow.style.marginTop = '1rem';
@@ -410,6 +415,7 @@ class SessionConfigModal extends obsidian.Modal {
                 includeStandard,
                 includeImageOnly,
                 includeAlias,
+                includeCallouts,
             }).open();
         });
 
@@ -450,6 +456,7 @@ class ReviewModal extends obsidian.Modal {
                 if (c.type === 'standard' && !sc.includeStandard) return false;
                 if (c.type === 'image_only' && !sc.includeImageOnly) return false;
                 if (c.type === 'alias_to_name' && !sc.includeAlias) return false;
+                if (c.type === 'callout_quiz' && !sc.includeCallouts) return false;
                 if (sc.filterLang && !c.langTags.includes(sc.filterLang)) return false;
                 if (sc.filterField && !c.fieldTags.includes(sc.filterField)) return false;
                 return true;
