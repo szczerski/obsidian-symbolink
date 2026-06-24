@@ -336,20 +336,27 @@ class SessionConfigModal extends obsidian.Modal {
         let count = s.cardsPerSession;
         let filterLang = s.filterLang || '';
         let filterField = s.filterField || '';
-        let includeStandard = true;
-        let includeImageOnly = s.imageOnlyCards;
-        let includeAlias = true;
+        let includeStandard = false;
+        let includeImageOnly = false;
+        let includeAlias = false;
         let includeCallouts = true;
 
         const allCards = await buildCards(this.app, s);
         const langSet = new Set();
-        const fieldSet = new Set();
+        const standardFieldSet = new Set();
+        const calloutFieldSet = new Set();
+        
         for (const c of allCards) {
             c.langTags.forEach(t => langSet.add(t));
-            c.fieldTags.forEach(t => fieldSet.add(t));
+            if (c.type === 'callout_quiz') {
+                c.fieldTags.forEach(t => calloutFieldSet.add(t));
+            } else {
+                c.fieldTags.forEach(t => standardFieldSet.add(t));
+            }
         }
         const languages = [...langSet].sort();
-        const fields = [...fieldSet].sort();
+        const standardFields = [...standardFieldSet].sort();
+        const calloutFields = [...calloutFieldSet].sort();
 
         // Cards count
         new obsidian.Setting(contentEl)
@@ -380,12 +387,20 @@ class SessionConfigModal extends obsidian.Modal {
             for (const l of languages) makeBtn(l, l);
         }
 
-        // Field filter
-        if (fields.length > 0) {
-            const fieldSetting = new obsidian.Setting(contentEl).setName('Field');
+        // Callout filter
+        if (calloutFields.length > 0) {
+            const fieldSetting = new obsidian.Setting(contentEl).setName('Callout Categories');
             const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
             makeBtn('All', '');
-            for (const f of fields) makeBtn(f, f);
+            for (const f of calloutFields) makeBtn(f, f);
+        }
+
+        // Standard filter
+        if (standardFields.length > 0) {
+            const fieldSetting = new obsidian.Setting(contentEl).setName('Standard Tags');
+            const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
+            makeBtn('All', '');
+            for (const f of standardFields) makeBtn(f, f);
         }
 
         // Card types
@@ -413,6 +428,8 @@ class SessionConfigModal extends obsidian.Modal {
 
         const startBtn = btnRow.createEl('button', { text: 'Start', cls: 'symbolink-btn symbolink-btn-check' });
         const cancelBtn = btnRow.createEl('button', { text: 'Cancel', cls: 'symbolink-btn symbolink-btn-skip' });
+        const statsBtn = btnRow.createEl('button', { text: 'Stats & Heatmap', cls: 'symbolink-btn' });
+        statsBtn.style.marginLeft = 'auto';
 
         startBtn.addEventListener('click', () => {
             this.close();
@@ -428,6 +445,10 @@ class SessionConfigModal extends obsidian.Modal {
         });
 
         cancelBtn.addEventListener('click', () => this.close());
+        statsBtn.addEventListener('click', () => {
+            this.close();
+            new StatsModal(this.app, this.plugin).open();
+        });
     }
 
     onClose() {
