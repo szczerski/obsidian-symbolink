@@ -711,22 +711,30 @@ class ReviewModal extends obsidian.Modal {
                 feedback.removeClass('symbolink-correct');
                 feedback.removeClass('symbolink-incorrect');
                 if (correct) {
-                    feedback.createEl('div', { text: '~ Correct with hint', cls: 'symbolink-fb-result' });
+                    if (lettersRevealed === 1) {
+                        feedback.createEl('div', { text: '~ Good (1 hint)', cls: 'symbolink-fb-result' });
+                        this.sessionCorrect++;
+                        this.recordReview(card.id, true, lettersRevealed);
+                    } else {
+                        feedback.createEl('div', { text: `~ Hard (${lettersRevealed} hints)`, cls: 'symbolink-fb-result' });
+                        this.sessionCorrect++;
+                        this.recordReview(card.id, true, lettersRevealed);
+                    }
                 } else {
                     feedback.createEl('div', { text: '✗ Wrong', cls: 'symbolink-fb-result' });
                     feedback.createEl('div', { text: `Answer: ${card.answer}`, cls: 'symbolink-fb-answer' });
                     if (given.trim() !== '') {
                         feedback.createEl('div', { text: `Your answer: ${given}`, cls: 'symbolink-fb-given' });
                     }
+                    this.sessionIncorrect++;
+                    this.recordReview(card.id, false, lettersRevealed);
                 }
-                this.sessionIncorrect++;
-                this.recordReview(card.id, false);
             } else if (correct) {
                 feedback.addClass('symbolink-correct');
                 feedback.removeClass('symbolink-incorrect');
-                feedback.createEl('div', { text: '✓ Correct!', cls: 'symbolink-fb-result' });
+                feedback.createEl('div', { text: '✓ Easy (No hints)!', cls: 'symbolink-fb-result' });
                 this.sessionCorrect++;
-                this.recordReview(card.id, true);
+                this.recordReview(card.id, true, 0);
             } else {
                 feedback.addClass('symbolink-incorrect');
                 feedback.removeClass('symbolink-correct');
@@ -736,7 +744,7 @@ class ReviewModal extends obsidian.Modal {
                     feedback.createEl('div', { text: `Your answer: ${given}`, cls: 'symbolink-fb-given' });
                 }
                 this.sessionIncorrect++;
-                this.recordReview(card.id, false);
+                this.recordReview(card.id, false, 0);
             }
             const revData = this.plugin.data.reviews[card.id];
             if (revData) {
@@ -788,7 +796,7 @@ class ReviewModal extends obsidian.Modal {
         setTimeout(() => input.focus(), 50);
     }
 
-    recordReview(cardId, correct) {
+    recordReview(cardId, correct, hints = 0) {
         if (!this.plugin.data.reviews[cardId]) {
             this.plugin.data.reviews[cardId] = {
                 box: 0,
@@ -804,10 +812,19 @@ class ReviewModal extends obsidian.Modal {
 
         if (correct) {
             data.correct++;
-            data.box = Math.min(data.box + 1, BOX_INTERVALS.length - 1);
+            if (hints === 0) {
+                // Easy: advance
+                data.box = Math.min(data.box + 1, BOX_INTERVALS.length - 1);
+            } else if (hints === 1) {
+                // Good: stay
+                data.box = data.box;
+            } else {
+                // Hard: regress 1 box
+                data.box = Math.max(data.box - 1, 0);
+            }
         } else {
             data.incorrect++;
-            data.box = Math.max(data.box - 1, 0);
+            data.box = 0; // Wrong: reset completely
         }
 
         const interval = BOX_INTERVALS[data.box];
@@ -825,6 +842,7 @@ class ReviewModal extends obsidian.Modal {
         }
 
         this.plugin.saveData(this.plugin.data);
+        this.plugin.updateStatusBar();
     }
 
     showSummary() {
@@ -895,9 +913,18 @@ class StatsModal extends obsidian.Modal {
         let totalCorrect = 0;
         let totalIncorrect = 0;
         const boxCounts = new Array(BOX_INTERVALS.length).fill(0);
+        
+        const catStats = {};
 
         for (const card of allCards) {
             const data = reviews[card.id];
+            
+            const cat = card.category || card.fieldTags[0] || card.langTags[0] || 'none';
+            if (!catStats[cat]) {
+                catStats[cat] = { due: 0, correct: 0, incorrect: 0, total: 0 };
+            }
+            catStats[cat].total++;
+
             if (!data) {
                 newCount++;
                 continue;
@@ -908,7 +935,10 @@ class StatsModal extends obsidian.Modal {
             const interval = BOX_INTERVALS[Math.min(data.box, BOX_INTERVALS.length - 1)];
             if (daysBetween(data.lastReview, now) >= interval) {
                 dueCount++;
+                catStats[cat].due++;
             }
+            catStats[cat].correct += data.correct;
+            catStats[cat].incorrect += data.incorrect;
         }
 
         contentEl.createEl('h2', { text: 'Symbolink Stats' });
@@ -1028,6 +1058,23 @@ class StatsModal extends obsidian.Modal {
             ? Math.round(totalCorrect / (totalCorrect + totalIncorrect) * 100) + '%'
             : 'no data');
 
+        contentEl.createEl('h3', { text: 'Category Performance' });
+        const catGrid = contentEl.createDiv({ cls: 'symbolink-stats-grid symbolink-cat-stats-grid' });
+        catGrid.style.gridTemplateColumns = '1fr 1fr';
+        
+        // Sort categories by total cards descending
+        const sortedCats = Object.entries(catStats).sort((a, b) => b[1].total - a[1].total);
+        for (const [cat, stats] of sortedCats) {
+            if (stats.total === 0) continue;
+            const acc = stats.correct + stats.incorrect > 0 
+                ? Math.round(stats.correct / (stats.correct + stats.incorrect) * 100) + '%'
+                : '-';
+            
+            const row = catGrid.createDiv({ cls: 'symbolink-stat-row' });
+            row.createEl('span', { text: cat, cls: 'symbolink-stat-label' });
+            row.createEl('span', { text: `Acc: ${acc} | Due: ${stats.due}`, cls: 'symbolink-stat-value' });
+        }
+
         contentEl.createEl('h3', { text: 'Box distribution' });
         const boxDiv = contentEl.createDiv({ cls: 'symbolink-box-chart' });
         for (let i = 0; i < BOX_INTERVALS.length; i++) {
@@ -1085,6 +1132,7 @@ class CardBrowserModal extends obsidian.Modal {
         this.allCards = [];
         this.sortCol = 'nextReview';
         this.sortAsc = true;
+        this.searchQuery = '';
     }
 
     async onOpen() {
@@ -1097,6 +1145,19 @@ class CardBrowserModal extends obsidian.Modal {
 
         const header = contentEl.createDiv({ cls: 'symbolink-header' });
         header.createEl('h2', { text: 'Card Browser' });
+
+        const searchInput = contentEl.createEl('input', {
+            type: 'text',
+            placeholder: 'Search cards...',
+            cls: 'symbolink-browser-search'
+        });
+        searchInput.style.marginBottom = '15px';
+        searchInput.style.width = '100%';
+        searchInput.style.padding = '8px';
+        searchInput.addEventListener('input', (e) => {
+            this.searchQuery = e.target.value.toLowerCase();
+            this.renderTable();
+        });
 
         const loading = contentEl.createEl('p', { text: 'Loading cards...' });
         
@@ -1143,8 +1204,17 @@ class CardBrowserModal extends obsidian.Modal {
         
         const container = contentEl.createDiv({ cls: 'symbolink-browser-container' });
         
+        let displayCards = this.browserCards;
+        if (this.searchQuery) {
+            displayCards = displayCards.filter(c => 
+                c.question.toLowerCase().includes(this.searchQuery) ||
+                c.category.toLowerCase().includes(this.searchQuery) ||
+                c.type.toLowerCase().includes(this.searchQuery)
+            );
+        }
+        
         // Sorting logic
-        this.browserCards.sort((a, b) => {
+        displayCards.sort((a, b) => {
             let valA = a[this.sortCol];
             let valB = b[this.sortCol];
             
@@ -1194,7 +1264,7 @@ class CardBrowserModal extends obsidian.Modal {
 
         // Body
         const tbody = table.createEl('tbody');
-        for (const bc of this.browserCards) {
+        for (const bc of displayCards) {
             const row = tbody.createEl('tr');
             
             const qTd = row.createEl('td', { text: bc.question, cls: 'symbolink-browser-q' });
@@ -1364,6 +1434,14 @@ class SymbolinkPlugin extends obsidian.Plugin {
     async onload() {
         await this.loadSettings();
 
+        this.statusBarItem = this.addStatusBarItem();
+        this.statusBarItem.addClass('symbolink-status-bar-item');
+        this.statusBarItem.style.cursor = 'pointer';
+        this.statusBarItem.addEventListener('click', () => {
+            new SessionConfigModal(this.app, this).open();
+        });
+        this.updateStatusBar();
+
         this.addCommand({
             id: 'start-review',
             name: 'Start review',
@@ -1407,6 +1485,27 @@ class SymbolinkPlugin extends obsidian.Plugin {
     async saveSettings() {
         this.data.settings = this.settings;
         await this.saveData(this.data);
+        this.updateStatusBar();
+    }
+
+    updateStatusBar() {
+        if (!this.statusBarItem) return;
+        let due = 0;
+        const nowStr = today();
+        if (this.data && this.data.reviews) {
+            for (const cardId in this.data.reviews) {
+                const r = this.data.reviews[cardId];
+                if (r.nextReview && r.nextReview <= nowStr) {
+                    due++;
+                }
+            }
+        }
+        
+        if (due > 0) {
+            this.statusBarItem.setText(`💡 Fiszki: ${due} do powtórki`);
+        } else {
+            this.statusBarItem.setText(`💡 Fiszki: Zrobione!`);
+        }
     }
 }
 
