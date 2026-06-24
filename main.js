@@ -331,6 +331,7 @@ class SessionConfigModal extends obsidian.Modal {
         contentEl.addClass('symbolink-modal');
         this.modalEl.style.width = '800px';
         this.modalEl.style.maxWidth = '90vw';
+        this.contentEl.style.maxWidth = '100%'; // Override default 600px constraint
 
         contentEl.createEl('h2', { text: 'Session setup' });
 
@@ -1092,6 +1093,7 @@ class CardBrowserModal extends obsidian.Modal {
         contentEl.addClass('symbolink-modal', 'symbolink-browser-modal');
         this.modalEl.style.width = '90vw';
         this.modalEl.style.maxWidth = '1200px';
+        this.contentEl.style.maxWidth = '100%';
 
         const header = contentEl.createDiv({ cls: 'symbolink-header' });
         header.createEl('h2', { text: 'Card Browser' });
@@ -1121,6 +1123,7 @@ class CardBrowserModal extends obsidian.Modal {
                 box: data.box,
                 lastReview: data.lastReview,
                 nextReview: data.nextReview,
+                reviews: data.correct + data.incorrect,
                 accuracy: data.correct + data.incorrect > 0 
                     ? Math.round(data.correct / (data.correct + data.incorrect) * 100)
                     : -1, // -1 means no data
@@ -1163,6 +1166,7 @@ class CardBrowserModal extends obsidian.Modal {
             { id: 'type', label: 'Type' },
             { id: 'category', label: 'Category' },
             { id: 'box', label: 'Box' },
+            { id: 'reviews', label: 'Reviews' },
             { id: 'lastReview', label: 'Last Review' },
             { id: 'nextReview', label: 'Next Review' },
             { id: 'accuracy', label: 'Accuracy' },
@@ -1206,6 +1210,7 @@ class CardBrowserModal extends obsidian.Modal {
             row.createEl('td', { text: bc.type });
             row.createEl('td', { text: bc.category });
             row.createEl('td', { text: String(bc.box) });
+            row.createEl('td', { text: String(bc.reviews) });
             row.createEl('td', { text: bc.lastReview });
             row.createEl('td', { text: bc.nextReview });
             
