@@ -357,3 +357,116 @@
 .is-mobile .symbolink-input {
     font-size: 16px;
 }
+
+/* Callout Quiz */
+.symbolink-question-text {
+    font-size: 1.25em;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: center;
+    padding: 15px 10px;
+    color: var(--text-normal);
+}
+
+/* Streaks & Heatmap */
+.symbolink-streaks-container {
+    display: flex;
+    justify-content: space-around;
+    gap: 12px;
+    margin: 16px 0;
+}
+.symbolink-streak-card {
+    flex: 1;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.symbolink-streak-val {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: var(--text-accent);
+    margin-bottom: 4px;
+}
+.symbolink-streak-lbl {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.symbolink-heatmap-container {
+    width: 100%;
+    margin: 16px 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background: var(--background-secondary);
+    padding: 12px;
+    box-sizing: border-box;
+}
+.symbolink-heatmap-scroll {
+    overflow-x: auto;
+    width: 100%;
+    padding-bottom: 8px;
+}
+.symbolink-heatmap-grid {
+    display: flex;
+    gap: 3px;
+    width: max-content;
+}
+.symbolink-heatmap-week {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.symbolink-heatmap-day {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--background-modifier-hover);
+    transition: background 0.15s, transform 0.1s;
+}
+.symbolink-heatmap-day:hover:not(.empty) {
+    transform: scale(1.2);
+    box-shadow: 0 0 3px rgba(0,0,0,0.2);
+}
+.symbolink-heatmap-day.level-1 {
+    background: var(--interactive-accent);
+    opacity: 0.3;
+}
+.symbolink-heatmap-day.level-2 {
+    background: var(--interactive-accent);
+    opacity: 0.55;
+}
+.symbolink-heatmap-day.level-3 {
+    background: var(--interactive-accent);
+    opacity: 0.8;
+}
+.symbolink-heatmap-day.level-4 {
+    background: var(--interactive-accent);
+    opacity: 1;
+}
+
+.symbolink-heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.symbolink-heatmap-title {
+    margin: 0;
+    font-size: 1.1em;
+}
+.symbolink-heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+}
+.symbolink-heatmap-legend .symbolink-heatmap-day {
+    width: 8px;
+    height: 8px;
+}

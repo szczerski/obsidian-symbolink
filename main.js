@@ -50,11 +50,78 @@ function checkAnswer(given, expected, fuzzy) {
     return given.trim() === expected.trim();
 }
 
+function getCount(entry) {
+    if (!entry) return 0;
+    if (typeof entry === 'number') return entry;
+    if (typeof entry === 'object') {
+        return (entry.correct || 0) + (entry.incorrect || 0);
+    }
+    return 0;
+}
+
+function calculateStreaks(history) {
+    const activeDates = Object.keys(history || {})
+        .filter(dateStr => getCount(history[dateStr]) > 0)
+        .sort();
+
+    if (activeDates.length === 0) {
+        return { current: 0, longest: 0, average: 0 };
+    }
+
+    const parseDateToDayIndex = (dateStr) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        return Math.floor(date.getTime() / 86400000);
+    };
+
+    const dayIndices = activeDates.map(parseDateToDayIndex);
+
+    const streaks = [];
+    let currentStreakLength = 1;
+
+    for (let i = 1; i < dayIndices.length; i++) {
+        if (dayIndices[i] === dayIndices[i - 1] + 1) {
+            currentStreakLength++;
+        } else {
+            streaks.push(currentStreakLength);
+            currentStreakLength = 1;
+        }
+    }
+    streaks.push(currentStreakLength);
+
+    const longest = Math.max(...streaks);
+    const average = Math.round(streaks.reduce((a, b) => a + b, 0) / streaks.length * 10) / 10;
+
+    const todayStr = today();
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yesterdayStr = d.toISOString().slice(0, 10);
+
+    const hasToday = getCount(history[todayStr]) > 0;
+    const hasYesterday = getCount(history[yesterdayStr]) > 0;
+
+    let current = 0;
+    if (hasToday || hasYesterday) {
+        let checkDate = hasToday ? new Date() : d;
+        while (true) {
+            const checkStr = checkDate.toISOString().slice(0, 10);
+            if (getCount(history[checkStr]) > 0) {
+                current++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+    }
+
+    return { current, longest, average };
+}
+
 /* ───────────────────────────────────────────
    Card builder
    ─────────────────────────────────────────── */
 
-function buildCards(app, settings) {
+async function buildCards(app, settings) {
     const cards = [];
     const files = app.vault.getMarkdownFiles();
 
@@ -64,87 +131,135 @@ function buildCards(app, settings) {
         }
 
         const cache = app.metadataCache.getFileCache(file);
-        if (!cache || !cache.frontmatter) continue;
-
-        const fm = cache.frontmatter;
-        const answer = file.basename;
-
-        const fmTags = fm.tags || [];
-        const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
-
-        // Skip cards marked with _category (excluded from study)
-        let hasCategory = tagList.some(t => String(t).replace(/^#/, '').startsWith('_category/'));
-        if (!hasCategory && cache.tags) {
-            hasCategory = cache.tags.some(t => t.tag.replace(/^#/, '').startsWith('_category/'));
+        
+        // Exclude files marked with a _category tag from study
+        if (cache) {
+            let hasCategory = false;
+            if (cache.frontmatter && cache.frontmatter.tags) {
+                const fmTags = cache.frontmatter.tags || [];
+                const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
+                hasCategory = tagList.some(t => String(t).replace(/^#/, '').startsWith('_category/'));
+            }
+            if (!hasCategory && cache.tags) {
+                hasCategory = cache.tags.some(t => t.tag.replace(/^#/, '').startsWith('_category/'));
+            }
+            if (hasCategory) continue;
         }
-        if (hasCategory) continue;
 
-        // collect hints
-        const nodes = fm.nodes ? (Array.isArray(fm.nodes) ? fm.nodes : String(fm.nodes).split(/[\s,]+/)) : [];
-        const tags = fm.tags ? (Array.isArray(fm.tags) ? fm.tags : [fm.tags]).map(t => String(t).replace(/^#/, '')).filter(t => !t.startsWith('_')) : [];
-        const imageRaw = fm.image || null;
-        const image = Array.isArray(imageRaw) ? (imageRaw[0] || null) : imageRaw;
-        const aliases = fm.alias || fm.aliases || [];
-        const aliasList = Array.isArray(aliases) ? aliases : [aliases];
+        // --- Frontmatter based cards ---
+        if (cache && cache.frontmatter) {
+            const fm = cache.frontmatter;
+            const answer = file.basename;
 
-        let langTags = [];
-        let fieldTags = [];
-        for (const t of tagList) {
-            const s = String(t).replace(/^#/, '');
-            if (s.startsWith('_lang/')) langTags.push(s.replace('_lang/', ''));
-            if (s.startsWith('_field/')) fieldTags.push(s.replace('_field/', ''));
-        }
-        if (cache.tags) {
-            for (const t of cache.tags) {
-                const s = t.tag.replace(/^#/, '');
-                if (s.startsWith('_lang/') && !langTags.includes(s.replace('_lang/', ''))) langTags.push(s.replace('_lang/', ''));
-                if (s.startsWith('_field/') && !fieldTags.includes(s.replace('_field/', ''))) fieldTags.push(s.replace('_field/', ''));
+            const fmTags = fm.tags || [];
+            const tagList = Array.isArray(fmTags) ? fmTags : [fmTags];
+
+            // collect hints
+            const nodes = fm.nodes ? (Array.isArray(fm.nodes) ? fm.nodes : String(fm.nodes).split(/[\s,]+/)) : [];
+            const tags = fm.tags ? (Array.isArray(fm.tags) ? fm.tags : [fm.tags]).map(t => String(t).replace(/^#/, '')).filter(t => !t.startsWith('_')) : [];
+            const imageRaw = fm.image || null;
+            const image = Array.isArray(imageRaw) ? (imageRaw[0] || null) : imageRaw;
+            const aliases = fm.alias || fm.aliases || [];
+            const aliasList = Array.isArray(aliases) ? aliases : [aliases];
+
+            let langTags = [];
+            let fieldTags = [];
+            for (const t of tagList) {
+                const s = String(t).replace(/^#/, '');
+                if (s.startsWith('_lang/')) langTags.push(s.replace('_lang/', ''));
+                if (s.startsWith('_field/')) fieldTags.push(s.replace('_field/', ''));
+            }
+            if (cache.tags) {
+                for (const t of cache.tags) {
+                    const s = t.tag.replace(/^#/, '');
+                    if (s.startsWith('_lang/') && !langTags.includes(s.replace('_lang/', ''))) langTags.push(s.replace('_lang/', ''));
+                    if (s.startsWith('_field/') && !fieldTags.includes(s.replace('_field/', ''))) fieldTags.push(s.replace('_field/', ''));
+                }
+            }
+
+            const hasHints = nodes.length > 0 || tags.length > 0 || image;
+
+            if (hasHints) {
+                cards.push({
+                    id: file.path,
+                    answer: answer,
+                    nodes: nodes,
+                    tags: tags,
+                    image: image,
+                    langTags: langTags,
+                    fieldTags: fieldTags,
+                    type: 'standard',
+                });
+            }
+
+            // Image-only cards: show only image, answer is filename
+            if (image && settings.imageOnlyCards) {
+                cards.push({
+                    id: file.path + '::image',
+                    answer: answer,
+                    image: image,
+                    langTags: langTags,
+                    fieldTags: fieldTags,
+                    type: 'image_only',
+                });
+            }
+
+            // Alias cards: show alias, answer is filename
+            for (const al of aliasList) {
+                if (!al) continue;
+                cards.push({
+                    id: file.path + '::alias::' + al,
+                    answer: answer,
+                    aliasHint: String(al),
+                    nodes: [],
+                    tags: [],
+                    image: null,
+                    langTags: langTags,
+                    fieldTags: fieldTags,
+                    type: 'alias_to_name',
+                });
             }
         }
+        
+        // --- Callout quiz cards ---
+        const content = await app.vault.read(file);
+        const lines = content.split(/\r?\n/);
 
-        const hasHints = nodes.length > 0 || tags.length > 0 || image;
+        let currentCard = null;
 
-        if (!hasHints && aliasList.filter(Boolean).length === 0) continue;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
 
-        if (hasHints) {
-            cards.push({
-                id: file.path,
-                answer: answer,
-                nodes: nodes,
-                tags: tags,
-                image: image,
-                langTags: langTags,
-                fieldTags: fieldTags,
-                type: 'standard',
-            });
-        }
+            // Match callout header: > [!category]- Question
+            const calloutMatch = line.match(/^>\s*\[!([a-zA-Z]+)\]-\s*(.+)$/);
 
-        // Image-only cards: show only image, answer is filename
-        if (image && settings.imageOnlyCards) {
-            cards.push({
-                id: file.path + '::image',
-                answer: answer,
-                image: image,
-                langTags: langTags,
-                fieldTags: fieldTags,
-                type: 'image_only',
-            });
-        }
+            if (calloutMatch) {
+                currentCard = {
+                    id: `${file.path}::line::${i}`,
+                    category: calloutMatch[1],
+                    question: calloutMatch[2].trim(),
+                    answer: '',
+                    type: 'callout_quiz',
+                    fieldTags: [calloutMatch[1]], // Map category to field tag for filtering
+                    langTags: []
+                };
+                continue;
+            }
 
-        // Alias cards: show alias, answer is filename
-        for (const al of aliasList) {
-            if (!al) continue;
-            cards.push({
-                id: file.path + '::alias::' + al,
-                answer: answer,
-                aliasHint: String(al),
-                nodes: [],
-                tags: [],
-                image: null,
-                langTags: langTags,
-                fieldTags: fieldTags,
-                type: 'alias_to_name',
-            });
+            // If we found a header, look for [[answer]] in subsequent lines
+            if (currentCard) {
+                if (line.trim().startsWith('>')) {
+                    const answerMatch = line.match(/\[\[(.+?)\]\]/);
+                    if (answerMatch) {
+                        currentCard.answer = answerMatch[1].trim();
+                        cards.push(currentCard);
+                        currentCard = null; // Card is complete, reset
+                    }
+                } else {
+                    // If line doesn't start with '>', we've left the callout block
+                    currentCard = null;
+                }
+            }
         }
     }
 
@@ -328,7 +443,8 @@ class ReviewModal extends obsidian.Modal {
         contentEl.addClass('symbolink-modal');
 
         const sc = this.sessionConfig;
-        let allCards = buildCards(this.app, this.plugin.settings);
+        let allCards = await buildCards(this.app, this.plugin.settings);
+        this.allCards = allCards;
         if (sc) {
             allCards = allCards.filter(c => {
                 if (c.type === 'standard' && !sc.includeStandard) return false;
@@ -393,7 +509,10 @@ class ReviewModal extends obsidian.Modal {
         // Hint area
         const hintArea = contentEl.createDiv({ cls: 'symbolink-hints' });
 
-        if (card.type === 'alias_to_name') {
+        if (card.type === 'callout_quiz') {
+            const qDiv = hintArea.createDiv({ cls: 'symbolink-question' });
+            qDiv.createEl('div', { text: card.question, cls: 'symbolink-question-text' });
+        } else if (card.type === 'alias_to_name') {
             hintArea.createEl('div', { text: card.aliasHint, cls: 'symbolink-alias-hint' });
             hintArea.createEl('div', { text: 'alias → filename', cls: 'symbolink-hint-label' });
         } else if (card.type === 'image_only') {
@@ -591,6 +710,15 @@ class ReviewModal extends obsidian.Modal {
         next.setDate(next.getDate() + interval);
         data.nextReview = next.toISOString().slice(0, 10);
 
+        const t = today();
+        if (!this.plugin.data.history) this.plugin.data.history = {};
+        if (!this.plugin.data.history[t]) this.plugin.data.history[t] = { correct: 0, incorrect: 0 };
+        if (correct) {
+            this.plugin.data.history[t].correct++;
+        } else {
+            this.plugin.data.history[t].incorrect++;
+        }
+
         this.plugin.saveData(this.plugin.data);
     }
 
@@ -608,9 +736,9 @@ class ReviewModal extends obsidian.Modal {
         summary.createEl('div', { text: `Accuracy: ${pct}%`, cls: 'symbolink-summary-pct' });
 
         const reviewCount = Object.keys(this.plugin.data.reviews).length;
-        const allCards = buildCards(this.app, this.plugin.settings);
+        const totalCardsCount = this.allCards ? this.allCards.length : 0;
         summary.createEl('div', {
-            text: `Total cards: ${allCards.length} · Ever reviewed: ${reviewCount}`,
+            text: `Total cards: ${totalCardsCount} · Ever reviewed: ${reviewCount}`,
             cls: 'symbolink-summary-total'
         });
 
@@ -642,13 +770,13 @@ class StatsModal extends obsidian.Modal {
         this.plugin = plugin;
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass('symbolink-modal');
 
         const reviews = this.plugin.data.reviews;
-        const allCards = buildCards(this.app, this.plugin.settings);
+        const allCards = await buildCards(this.app, this.plugin.settings);
         const now = today();
 
         let dueCount = 0;
@@ -673,6 +801,104 @@ class StatsModal extends obsidian.Modal {
         }
 
         contentEl.createEl('h2', { text: 'Symbolink Stats' });
+
+        const { current, longest, average } = calculateStreaks(this.plugin.data.history || {});
+        
+        const streaksContainer = contentEl.createDiv({ cls: 'symbolink-streaks-container' });
+        
+        const createStreakCard = (val, lbl) => {
+            const card = streaksContainer.createDiv({ cls: 'symbolink-streak-card' });
+            card.createDiv({ cls: 'symbolink-streak-val', text: val });
+            card.createDiv({ cls: 'symbolink-streak-lbl', text: lbl });
+        };
+        
+        createStreakCard(`🔥 ${current}`, 'Current Streak');
+        createStreakCard(`🏆 ${longest}`, 'Longest Streak');
+        createStreakCard(`📊 ${average}`, 'Avg. Streak');
+
+        const heatmapContainer = contentEl.createDiv({ cls: 'symbolink-heatmap-container' });
+        
+        const heatmapHeader = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-header' });
+        heatmapHeader.createEl('h3', { text: 'Review History', cls: 'symbolink-heatmap-title' });
+        const legend = heatmapHeader.createDiv({ cls: 'symbolink-heatmap-legend' });
+        legend.createEl('span', { text: 'Less' });
+        [0, 1, 2, 3, 4].forEach(lvl => {
+            const lCell = legend.createDiv({ cls: `symbolink-heatmap-day level-${lvl}` });
+            if (lvl === 0) lCell.addClass('empty');
+        });
+        legend.createEl('span', { text: 'More' });
+
+        const heatmapScroll = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-scroll' });
+        const heatmapGrid = heatmapScroll.createDiv({ cls: 'symbolink-heatmap-grid' });
+
+        const history = this.plugin.data.history || {};
+        const todayDate = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 364);
+        const dayOfWeek = start.getDay();
+        const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        start.setDate(start.getDate() - diffToMonday);
+        start.setHours(0, 0, 0, 0);
+
+        const dates = [];
+        const currentDt = new Date(start);
+        const end = new Date(todayDate);
+        end.setHours(23, 59, 59, 999);
+
+        while (currentDt <= end) {
+            dates.push(new Date(currentDt));
+            currentDt.setDate(currentDt.getDate() + 1);
+        }
+
+        const weeks = [];
+        let currentWeek = [];
+        for (const d of dates) {
+            currentWeek.push(d);
+            if (currentWeek.length === 7) {
+                weeks.push(currentWeek);
+                currentWeek = [];
+            }
+        }
+        if (currentWeek.length > 0) {
+            while (currentWeek.length < 7) {
+                currentWeek.push(null);
+            }
+            weeks.push(currentWeek);
+        }
+
+        for (const week of weeks) {
+            const weekCol = heatmapGrid.createDiv({ cls: 'symbolink-heatmap-week' });
+            for (const d of week) {
+                const dayCell = weekCol.createDiv({ cls: 'symbolink-heatmap-day' });
+                if (d) {
+                    const dateStr = d.toISOString().slice(0, 10);
+                    const entry = history[dateStr];
+                    const count = getCount(entry);
+                    
+                    dayCell.setAttribute('title', `${dateStr}: ${count} reviews`);
+                    
+                    let level = 0;
+                    if (count > 0 && count < 5) level = 1;
+                    else if (count >= 5 && count < 10) level = 2;
+                    else if (count >= 10 && count < 20) level = 3;
+                    else if (count >= 20) level = 4;
+                    
+                    if (level > 0) {
+                        dayCell.addClass(`level-${level}`);
+                    } else {
+                        dayCell.addClass('empty');
+                    }
+                } else {
+                    dayCell.addClass('empty');
+                    dayCell.style.opacity = '0';
+                }
+            }
+        }
+
+        // Scroll to the end (right side) of the heatmap so today is visible
+        setTimeout(() => {
+            heatmapScroll.scrollLeft = heatmapScroll.scrollWidth;
+        }, 50);
 
         const grid = contentEl.createDiv({ cls: 'symbolink-stats-grid' });
 
@@ -714,6 +940,7 @@ class StatsModal extends obsidian.Modal {
         resetBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete all review data?')) {
                 this.plugin.data.reviews = {};
+                this.plugin.data.history = {};
                 this.plugin.saveData(this.plugin.data);
                 new obsidian.Notice('Progress reset');
                 this.onOpen();
@@ -868,7 +1095,22 @@ class SymbolinkPlugin extends obsidian.Plugin {
 
     async loadSettings() {
         const saved = await this.loadData();
-        this.data = Object.assign({ reviews: {}, settings: {} }, saved || {});
+        this.data = Object.assign({ reviews: {}, settings: {}, history: {} }, saved || {});
+        
+        if (Object.keys(this.data.history || {}).length === 0 && Object.keys(this.data.reviews || {}).length > 0) {
+            this.data.history = {};
+            for (const cardId in this.data.reviews) {
+                const r = this.data.reviews[cardId];
+                if (r.lastReview) {
+                    if (!this.data.history[r.lastReview]) {
+                        this.data.history[r.lastReview] = { correct: 0, incorrect: 0 };
+                    }
+                    if (r.correct > 0) this.data.history[r.lastReview].correct += 1;
+                    else this.data.history[r.lastReview].incorrect += 1;
+                }
+            }
+        }
+        
         this.settings = Object.assign({}, DEFAULT_SETTINGS, this.data.settings);
     }
 
