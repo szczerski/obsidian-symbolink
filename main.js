@@ -329,6 +329,8 @@ class SessionConfigModal extends obsidian.Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass('symbolink-modal');
+        this.modalEl.style.width = '800px';
+        this.modalEl.style.maxWidth = '90vw';
 
         contentEl.createEl('h2', { text: 'Session setup' });
 
@@ -361,13 +363,18 @@ class SessionConfigModal extends obsidian.Modal {
         // Cards count
         new obsidian.Setting(contentEl)
             .setName('Cards')
-            .addText(text => text
-                .setValue(String(count))
-                .onChange(v => { const n = parseInt(v); if (!isNaN(n) && n > 0) count = n; }));
+            .setDesc('Number of flashcards in this session')
+            .addSlider(slider => slider
+                .setLimits(5, 100, 5)
+                .setValue(count)
+                .setDynamicTooltip()
+                .onChange(v => count = v));
 
-        // Language filter
-        const makeBtnGroup = (setting, current, onChange) => {
-            const row = setting.controlEl.createDiv({ cls: 'symbolink-cat-buttons' });
+        // Category filter UI generator
+        const makeBtnGroup = (title, current, onChange) => {
+            const wrapper = contentEl.createDiv({ cls: 'symbolink-cat-group' });
+            wrapper.createEl('div', { text: title, cls: 'symbolink-section-label' });
+            const row = wrapper.createDiv({ cls: 'symbolink-cat-buttons' });
             const makeBtn = (label, value) => {
                 const btn = row.createEl('button', { text: label, cls: 'symbolink-cat-btn' });
                 if (current === value) btn.addClass('symbolink-cat-btn-active');
@@ -381,24 +388,21 @@ class SessionConfigModal extends obsidian.Modal {
         };
 
         if (languages.length > 0) {
-            const langSetting = new obsidian.Setting(contentEl).setName('Language');
-            const makeBtn = makeBtnGroup(langSetting, filterLang, v => filterLang = v);
+            const makeBtn = makeBtnGroup('Language', filterLang, v => filterLang = v);
             makeBtn('All', '');
             for (const l of languages) makeBtn(l, l);
         }
 
         // Callout filter
         if (calloutFields.length > 0) {
-            const fieldSetting = new obsidian.Setting(contentEl).setName('Callout Categories');
-            const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
+            const makeBtn = makeBtnGroup('Callout Categories', filterField, v => filterField = v);
             makeBtn('All', '');
             for (const f of calloutFields) makeBtn(f, f);
         }
 
         // Standard filter
         if (standardFields.length > 0) {
-            const fieldSetting = new obsidian.Setting(contentEl).setName('Standard Tags');
-            const makeBtn = makeBtnGroup(fieldSetting, filterField, v => filterField = v);
+            const makeBtn = makeBtnGroup('Standard Tags', filterField, v => filterField = v);
             makeBtn('All', '');
             for (const f of standardFields) makeBtn(f, f);
         }
@@ -547,17 +551,59 @@ class ReviewModal extends obsidian.Modal {
 
         if (card.type === 'callout_quiz') {
             const qDiv = hintArea.createDiv({ cls: 'symbolink-question' });
-            qDiv.createEl('div', { text: card.question, cls: 'symbolink-question-text' });
+            
+            let questionText = card.question;
+            const imgMatches = [...questionText.matchAll(/!\[\[(.+?)\]\]/g)];
+            for (const m of imgMatches) {
+                questionText = questionText.replace(m[0], '').trim();
+                try {
+                    const parts = m[1].split('|');
+                    const imgPath = parts[0];
+                    const sizeStr = parts[1];
+                    const imgFile = this.app.metadataCache.getFirstLinkpathDest(imgPath, '');
+                    if (imgFile) {
+                        const imgEl = qDiv.createEl('img', { cls: 'symbolink-image' });
+                        imgEl.src = this.app.vault.getResourcePath(imgFile);
+                        if (sizeStr) {
+                            if (sizeStr.includes('x')) {
+                                const [w, h] = sizeStr.split('x');
+                                imgEl.style.width = w + 'px';
+                                imgEl.style.height = h + 'px';
+                                imgEl.style.maxHeight = 'none';
+                            } else {
+                                imgEl.style.width = sizeStr + 'px';
+                                imgEl.style.maxHeight = 'none';
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+            
+            qDiv.createEl('div', { text: questionText, cls: 'symbolink-question-text' });
         } else if (card.type === 'alias_to_name') {
             hintArea.createEl('div', { text: card.aliasHint, cls: 'symbolink-alias-hint' });
             hintArea.createEl('div', { text: 'alias → filename', cls: 'symbolink-hint-label' });
         } else if (card.type === 'image_only') {
             try {
-                const imgPath = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
+                const linkContent = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
+                const parts = linkContent.split('|');
+                const imgPath = parts[0];
+                const sizeStr = parts[1];
                 const imgFile = this.app.metadataCache.getFirstLinkpathDest(imgPath, '');
                 if (imgFile) {
                     const imgEl = hintArea.createEl('img', { cls: 'symbolink-image' });
                     imgEl.src = this.app.vault.getResourcePath(imgFile);
+                    if (sizeStr) {
+                        if (sizeStr.includes('x')) {
+                            const [w, h] = sizeStr.split('x');
+                            imgEl.style.width = w + 'px';
+                            imgEl.style.height = h + 'px';
+                            imgEl.style.maxHeight = 'none';
+                        } else {
+                            imgEl.style.width = sizeStr + 'px';
+                            imgEl.style.maxHeight = 'none';
+                        }
+                    }
                     imgEl.onerror = () => {
                         imgEl.remove();
                         hintArea.createEl('div', { text: '(image not found)', cls: 'symbolink-label' });
@@ -571,11 +617,25 @@ class ReviewModal extends obsidian.Modal {
         } else {
             if (card.image && this.plugin.settings.showImage) {
                 try {
-                    const imgPath = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
+                    const linkContent = card.image.replace(/^!?\[\[(.+)\]\]$/, '$1');
+                    const parts = linkContent.split('|');
+                    const imgPath = parts[0];
+                    const sizeStr = parts[1];
                     const imgFile = this.app.metadataCache.getFirstLinkpathDest(imgPath, '');
                     if (imgFile) {
                         const imgEl = hintArea.createEl('img', { cls: 'symbolink-image' });
                         imgEl.src = this.app.vault.getResourcePath(imgFile);
+                        if (sizeStr) {
+                            if (sizeStr.includes('x')) {
+                                const [w, h] = sizeStr.split('x');
+                                imgEl.style.width = w + 'px';
+                                imgEl.style.height = h + 'px';
+                                imgEl.style.maxHeight = 'none';
+                            } else {
+                                imgEl.style.width = sizeStr + 'px';
+                                imgEl.style.maxHeight = 'none';
+                            }
+                        }
                     }
                 } catch (e) { /* skip image on error */ }
             }
@@ -982,10 +1042,20 @@ class StatsModal extends obsidian.Modal {
             row.createEl('span', { text: String(boxCounts[i]), cls: 'symbolink-box-count' });
         }
 
-        contentEl.createEl('br');
-        const resetBtn = contentEl.createEl('button', {
+        const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
+        btnRow.style.marginTop = '20px';
+        const resetBtn = btnRow.createEl('button', {
             text: 'Reset progress',
             cls: 'symbolink-btn symbolink-btn-skip'
+        });
+        const browserBtn = btnRow.createEl('button', {
+            text: 'Card Browser',
+            cls: 'symbolink-btn'
+        });
+        browserBtn.style.marginLeft = '10px';
+        browserBtn.addEventListener('click', () => {
+            this.close();
+            new CardBrowserModal(this.app, this.plugin).open();
         });
         resetBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete all review data?')) {
@@ -996,6 +1066,171 @@ class StatsModal extends obsidian.Modal {
                 this.onOpen();
             }
         });
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+/* ───────────────────────────────────────────
+   Card Browser Modal
+   ─────────────────────────────────────────── */
+
+class CardBrowserModal extends obsidian.Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+        this.allCards = [];
+        this.sortCol = 'nextReview';
+        this.sortAsc = true;
+    }
+
+    async onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('symbolink-modal', 'symbolink-browser-modal');
+        this.modalEl.style.width = '90vw';
+        this.modalEl.style.maxWidth = '1200px';
+
+        const header = contentEl.createDiv({ cls: 'symbolink-header' });
+        header.createEl('h2', { text: 'Card Browser' });
+
+        const loading = contentEl.createEl('p', { text: 'Loading cards...' });
+        
+        this.allCards = await buildCards(this.app, this.plugin.settings);
+        
+        // Merge with review data
+        this.browserCards = this.allCards.map(c => {
+            const data = this.plugin.data.reviews[c.id] || {
+                box: 0,
+                correct: 0,
+                incorrect: 0,
+                lastReview: '-',
+                nextReview: '-'
+            };
+            
+            let q = c.question || c.answer || c.id;
+            if (q.length > 50) q = q.substring(0, 50) + '...';
+            
+            return {
+                id: c.id,
+                type: c.type,
+                question: q,
+                category: c.category || c.fieldTags[0] || c.langTags[0] || 'none',
+                box: data.box,
+                lastReview: data.lastReview,
+                nextReview: data.nextReview,
+                accuracy: data.correct + data.incorrect > 0 
+                    ? Math.round(data.correct / (data.correct + data.incorrect) * 100)
+                    : -1, // -1 means no data
+                data: data // keep ref to original data
+            };
+        });
+
+        loading.remove();
+        this.renderTable();
+    }
+    
+    renderTable() {
+        const { contentEl } = this;
+        // remove existing table if any
+        const existingTable = contentEl.querySelector('.symbolink-browser-container');
+        if (existingTable) existingTable.remove();
+        
+        const container = contentEl.createDiv({ cls: 'symbolink-browser-container' });
+        
+        // Sorting logic
+        this.browserCards.sort((a, b) => {
+            let valA = a[this.sortCol];
+            let valB = b[this.sortCol];
+            
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                return this.sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            } else {
+                return this.sortAsc ? (valA - valB) : (valB - valA);
+            }
+        });
+
+        const table = container.createEl('table', { cls: 'symbolink-browser-table' });
+        
+        // Header
+        const thead = table.createEl('thead');
+        const tr = thead.createEl('tr');
+        
+        const cols = [
+            { id: 'question', label: 'Question / Name' },
+            { id: 'type', label: 'Type' },
+            { id: 'category', label: 'Category' },
+            { id: 'box', label: 'Box' },
+            { id: 'lastReview', label: 'Last Review' },
+            { id: 'nextReview', label: 'Next Review' },
+            { id: 'accuracy', label: 'Accuracy' },
+            { id: 'actions', label: '' }
+        ];
+        
+        cols.forEach(col => {
+            const th = tr.createEl('th', { text: col.label });
+            if (col.id !== 'actions') {
+                th.style.cursor = 'pointer';
+                if (this.sortCol === col.id) {
+                    th.innerText += this.sortAsc ? ' 🔼' : ' 🔽';
+                }
+                th.addEventListener('click', () => {
+                    if (this.sortCol === col.id) {
+                        this.sortAsc = !this.sortAsc;
+                    } else {
+                        this.sortCol = col.id;
+                        this.sortAsc = true;
+                    }
+                    this.renderTable();
+                });
+            }
+        });
+
+        // Body
+        const tbody = table.createEl('tbody');
+        for (const bc of this.browserCards) {
+            const row = tbody.createEl('tr');
+            
+            const qTd = row.createEl('td', { text: bc.question, cls: 'symbolink-browser-q' });
+            // Make question clickable to open note
+            qTd.style.cursor = 'pointer';
+            qTd.style.color = 'var(--text-accent)';
+            qTd.addEventListener('click', () => {
+                const path = bc.id.split('::')[0];
+                this.app.workspace.openLinkText(path, '', true);
+                this.close();
+            });
+            
+            row.createEl('td', { text: bc.type });
+            row.createEl('td', { text: bc.category });
+            row.createEl('td', { text: String(bc.box) });
+            row.createEl('td', { text: bc.lastReview });
+            row.createEl('td', { text: bc.nextReview });
+            
+            const accText = bc.accuracy >= 0 ? bc.accuracy + '%' : '-';
+            row.createEl('td', { text: accText });
+            
+            const actionTd = row.createEl('td');
+            if (bc.lastReview !== '-') {
+                const resetBtn = actionTd.createEl('button', { text: 'Reset', cls: 'symbolink-btn symbolink-btn-skip' });
+                resetBtn.style.padding = '2px 6px';
+                resetBtn.style.fontSize = '0.8em';
+                resetBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm('Reset progress for this card?')) {
+                        delete this.plugin.data.reviews[bc.id];
+                        this.plugin.saveData(this.plugin.data);
+                        bc.box = 0;
+                        bc.lastReview = '-';
+                        bc.nextReview = '-';
+                        bc.accuracy = -1;
+                        this.renderTable();
+                    }
+                });
+            }
+        }
     }
 
     onClose() {

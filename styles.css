@@ -479,3 +479,45 @@
     color: var(--text-muted);
     line-height: 1.5;
 }
+
+.symbolink-cat-group {
+    margin-bottom: 20px;
+}
+.symbolink-section-label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-normal);
+}
+
+.symbolink-browser-container {
+    overflow-x: auto;
+    margin-top: 16px;
+}
+.symbolink-browser-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+.symbolink-browser-table th,
+.symbolink-browser-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    text-align: left;
+}
+.symbolink-browser-table th {
+    background-color: var(--background-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.symbolink-browser-table th:hover {
+    background-color: var(--background-modifier-hover);
+}
+.symbolink-browser-q {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.symbolink-browser-table tr:hover td {
+    background-color: var(--background-modifier-hover);
+}
