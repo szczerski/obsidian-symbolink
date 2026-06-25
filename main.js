@@ -234,14 +234,18 @@ async function buildCards(app, settings) {
             const calloutMatch = line.match(/^>\s*\[!([a-zA-Z]+)\]-\s*(.+)$/);
 
             if (calloutMatch) {
+                const rawCategory = calloutMatch[1];
+                const isLanguage = rawCategory.length === 2;
+                const formattedCategory = isLanguage ? rawCategory.toUpperCase() : rawCategory;
+
                 currentCard = {
                     id: `${file.path}::line::${i}`,
-                    category: calloutMatch[1],
+                    category: formattedCategory,
                     question: calloutMatch[2].trim(),
                     answer: '',
                     type: 'callout_quiz',
-                    fieldTags: [calloutMatch[1]], // Map category to field tag for filtering
-                    langTags: []
+                    fieldTags: isLanguage ? [] : [formattedCategory], // Map non-languages to field tag for filtering
+                    langTags: isLanguage ? [formattedCategory] : []   // Map languages to lang tags
                 };
                 continue;
             }
