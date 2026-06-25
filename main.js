@@ -235,6 +235,13 @@ async function buildCards(app, settings) {
 
             if (calloutMatch) {
                 const rawCategory = calloutMatch[1];
+                
+                // Exclude "note" callouts from being processed as study cards
+                if (rawCategory.toLowerCase() === 'note') {
+                    currentCard = null;
+                    continue;
+                }
+
                 const isLanguage = rawCategory.length === 2;
                 const formattedCategory = isLanguage ? rawCategory.toUpperCase() : rawCategory;
 
