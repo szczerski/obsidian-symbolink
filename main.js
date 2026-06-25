@@ -350,20 +350,14 @@ class SessionConfigModal extends obsidian.Modal {
 
         const allCards = await buildCards(this.app, s);
         const langSet = new Set();
-        const standardFieldSet = new Set();
-        const calloutFieldSet = new Set();
+        const fieldSet = new Set();
         
         for (const c of allCards) {
             c.langTags.forEach(t => langSet.add(t));
-            if (c.type === 'callout_quiz') {
-                c.fieldTags.forEach(t => calloutFieldSet.add(t));
-            } else {
-                c.fieldTags.forEach(t => standardFieldSet.add(t));
-            }
+            c.fieldTags.forEach(t => fieldSet.add(t));
         }
         const languages = [...langSet].sort();
-        const standardFields = [...standardFieldSet].sort();
-        const calloutFields = [...calloutFieldSet].sort();
+        const fields = [...fieldSet].sort();
 
         // Cards count
         new obsidian.Setting(contentEl)
@@ -398,18 +392,11 @@ class SessionConfigModal extends obsidian.Modal {
             for (const l of languages) makeBtn(l, l);
         }
 
-        // Callout filter
-        if (calloutFields.length > 0) {
-            const makeBtn = makeBtnGroup('Callout Categories', filterField, v => filterField = v);
+        // Category filter
+        if (fields.length > 0) {
+            const makeBtn = makeBtnGroup('Categories', filterField, v => filterField = v);
             makeBtn('All', '');
-            for (const f of calloutFields) makeBtn(f, f);
-        }
-
-        // Standard filter
-        if (standardFields.length > 0) {
-            const makeBtn = makeBtnGroup('Standard Tags', filterField, v => filterField = v);
-            makeBtn('All', '');
-            for (const f of standardFields) makeBtn(f, f);
+            for (const f of fields) makeBtn(f, f);
         }
 
         // Card types
