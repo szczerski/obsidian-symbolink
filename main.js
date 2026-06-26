@@ -24,8 +24,12 @@ const DEFAULT_SETTINGS = {
    Helpers
    ─────────────────────────────────────────── */
 
+function toLocalString(d) {
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 function today() {
-    return new Date().toISOString().slice(0, 10);
+    return toLocalString(new Date());
 }
 
 function daysBetween(a, b) {
@@ -48,6 +52,34 @@ function checkAnswer(given, expected, fuzzy) {
         return normalize(given) === normalize(expected);
     }
     return given.trim() === expected.trim();
+}
+
+function generateDiffHtml(given, expected) {
+    const givenTrim = given.trim();
+    const expectedTrim = expected.trim();
+    if (normalize(givenTrim) === normalize(expectedTrim)) {
+        return `<span class="symbolink-diff-correct">${given}</span>`;
+    }
+    
+    let html = '';
+    const maxLen = Math.max(givenTrim.length, expectedTrim.length);
+    for (let i = 0; i < maxLen; i++) {
+        const gChar = givenTrim[i];
+        const eChar = expectedTrim[i];
+        
+        if (gChar && eChar) {
+            if (normalize(gChar) === normalize(eChar)) {
+                html += `<span class="symbolink-diff-correct">${gChar}</span>`;
+            } else {
+                html += `<span class="symbolink-diff-incorrect">${gChar}</span>`;
+            }
+        } else if (gChar) {
+            html += `<span class="symbolink-diff-incorrect">${gChar}</span>`;
+        } else {
+            html += `<span class="symbolink-diff-missing">_</span>`;
+        }
+    }
+    return html;
 }
 
 function getCount(entry) {
@@ -95,7 +127,7 @@ function calculateStreaks(history) {
     const todayStr = today();
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    const yesterdayStr = d.toISOString().slice(0, 10);
+    const yesterdayStr = toLocalString(d);
 
     const hasToday = getCount(history[todayStr]) > 0;
     const hasYesterday = getCount(history[yesterdayStr]) > 0;
@@ -104,7 +136,7 @@ function calculateStreaks(history) {
     if (hasToday || hasYesterday) {
         let checkDate = hasToday ? new Date() : d;
         while (true) {
-            const checkStr = checkDate.toISOString().slice(0, 10);
+            const checkStr = toLocalString(checkDate);
             if (getCount(history[checkStr]) > 0) {
                 current++;
                 checkDate.setDate(checkDate.getDate() - 1);
@@ -344,7 +376,7 @@ class SessionConfigModal extends obsidian.Modal {
         this.modalEl.style.maxWidth = '90vw';
         this.contentEl.style.maxWidth = '100%'; // Override default 600px constraint
 
-        contentEl.createEl('h2', { text: 'Session setup' });
+        contentEl.createEl('h2', { text: 'Ustawienia sesji' });
 
         const s = this.plugin.settings;
         let count = s.cardsPerSession;
@@ -368,8 +400,8 @@ class SessionConfigModal extends obsidian.Modal {
 
         // Cards count
         new obsidian.Setting(contentEl)
-            .setName('Cards')
-            .setDesc('Number of flashcards in this session')
+            .setName('Karty')
+            .setDesc('Liczba fiszek do powtórki')
             .addSlider(slider => slider
                 .setLimits(5, 100, 5)
                 .setValue(count)
@@ -394,27 +426,27 @@ class SessionConfigModal extends obsidian.Modal {
         };
 
         if (languages.length > 0) {
-            const makeBtn = makeBtnGroup('Language', filterLang, v => filterLang = v);
-            makeBtn('All', '');
+            const makeBtn = makeBtnGroup('Język', filterLang, v => filterLang = v);
+            makeBtn('Wszystkie', '');
             for (const l of languages) makeBtn(l, l);
         }
 
         // Category filter
         if (fields.length > 0) {
-            const makeBtn = makeBtnGroup('Categories', filterField, v => filterField = v);
-            makeBtn('All', '');
+            const makeBtn = makeBtnGroup('Kategorie', filterField, v => filterField = v);
+            makeBtn('Wszystkie', '');
             for (const f of fields) makeBtn(f, f);
         }
 
         // Card types
-        contentEl.createEl('div', { text: 'Card types', cls: 'symbolink-section-label' });
+        contentEl.createEl('div', { text: 'Rodzaje kart', cls: 'symbolink-section-label' });
 
         new obsidian.Setting(contentEl)
-            .setName('Standard (nodes / tags)')
+            .setName('Standardowe (nodes / tagi)')
             .addToggle(t => t.setValue(includeStandard).onChange(v => includeStandard = v));
 
         new obsidian.Setting(contentEl)
-            .setName('Image only')
+            .setName('Tylko obrazek')
             .addToggle(t => t.setValue(includeImageOnly).onChange(v => includeImageOnly = v));
 
         new obsidian.Setting(contentEl)
@@ -422,7 +454,7 @@ class SessionConfigModal extends obsidian.Modal {
             .addToggle(t => t.setValue(includeAlias).onChange(v => includeAlias = v));
 
         new obsidian.Setting(contentEl)
-            .setName('Callouts')
+            .setName('Zakładki (Callouts)')
             .addToggle(t => t.setValue(includeCallouts).onChange(v => includeCallouts = v));
 
         // Buttons
@@ -430,8 +462,8 @@ class SessionConfigModal extends obsidian.Modal {
         btnRow.style.marginTop = '1rem';
 
         const startBtn = btnRow.createEl('button', { text: 'Start', cls: 'symbolink-btn symbolink-btn-check' });
-        const cancelBtn = btnRow.createEl('button', { text: 'Cancel', cls: 'symbolink-btn symbolink-btn-skip' });
-        const statsBtn = btnRow.createEl('button', { text: 'Stats & Heatmap', cls: 'symbolink-btn' });
+        const cancelBtn = btnRow.createEl('button', { text: 'Anuluj', cls: 'symbolink-btn symbolink-btn-skip' });
+        const statsBtn = btnRow.createEl('button', { text: 'Statystyki i Heatmapa', cls: 'symbolink-btn' });
         statsBtn.style.marginLeft = 'auto';
 
         startBtn.addEventListener('click', () => {
@@ -662,7 +694,7 @@ class ReviewModal extends obsidian.Modal {
         hintEl.style.display = 'none';
         const input = inputArea.createEl('input', {
             type: 'text',
-            placeholder: 'Type your answer...',
+            placeholder: 'Wpisz swoją odpowiedź...',
             cls: 'symbolink-input',
         });
 
@@ -679,12 +711,12 @@ class ReviewModal extends obsidian.Modal {
 
         // Buttons
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
-        const checkBtn = btnRow.createEl('button', { text: 'Check', cls: 'symbolink-btn symbolink-btn-check' });
-        const hintBtn = btnRow.createEl('button', { text: 'Hint', cls: 'symbolink-btn symbolink-btn-hint' });
-        const skipBtn = btnRow.createEl('button', { text: 'Skip', cls: 'symbolink-btn symbolink-btn-skip' });
-        const nextBtn = btnRow.createEl('button', { text: 'Next →', cls: 'symbolink-btn symbolink-btn-next' });
+        const checkBtn = btnRow.createEl('button', { text: 'Sprawdź', cls: 'symbolink-btn symbolink-btn-check' });
+        const hintBtn = btnRow.createEl('button', { text: 'Podpowiedź', cls: 'symbolink-btn symbolink-btn-hint' });
+        const skipBtn = btnRow.createEl('button', { text: 'Pomiń', cls: 'symbolink-btn symbolink-btn-skip' });
+        const nextBtn = btnRow.createEl('button', { text: 'Dalej →', cls: 'symbolink-btn symbolink-btn-next' });
         nextBtn.style.display = 'none';
-        const openBtn = btnRow.createEl('button', { text: 'Open in tab', cls: 'symbolink-btn symbolink-btn-open' });
+        const openBtn = btnRow.createEl('button', { text: 'Otwórz kartę', cls: 'symbolink-btn symbolink-btn-open' });
         openBtn.style.display = 'none';
 
         hintBtn.addEventListener('click', () => {
@@ -710,19 +742,20 @@ class ReviewModal extends obsidian.Modal {
                 feedback.removeClass('symbolink-incorrect');
                 if (correct) {
                     if (lettersRevealed === 1) {
-                        feedback.createEl('div', { text: '~ Good (1 hint)', cls: 'symbolink-fb-result' });
+                        feedback.createEl('div', { text: '~ Dobrze (1 podpowiedź)', cls: 'symbolink-fb-result' });
                         this.sessionCorrect++;
                         this.recordReview(card.id, true, lettersRevealed);
                     } else {
-                        feedback.createEl('div', { text: `~ Hard (${lettersRevealed} hints)`, cls: 'symbolink-fb-result' });
+                        feedback.createEl('div', { text: `~ Trudne (${lettersRevealed} podpowiedzi)`, cls: 'symbolink-fb-result' });
                         this.sessionCorrect++;
                         this.recordReview(card.id, true, lettersRevealed);
                     }
                 } else {
-                    feedback.createEl('div', { text: '✗ Wrong', cls: 'symbolink-fb-result' });
-                    feedback.createEl('div', { text: `Answer: ${card.answer}`, cls: 'symbolink-fb-answer' });
+                    feedback.createEl('div', { text: '✗ Błędnie', cls: 'symbolink-fb-result' });
+                    feedback.createEl('div', { text: `Odpowiedź: ${card.answer}`, cls: 'symbolink-fb-answer' });
                     if (given.trim() !== '') {
-                        feedback.createEl('div', { text: `Your answer: ${given}`, cls: 'symbolink-fb-given' });
+                        const givenDiv = feedback.createDiv({ cls: 'symbolink-fb-given' });
+                        givenDiv.innerHTML = `Twoja odpowiedź: ${generateDiffHtml(given, card.answer)}`;
                     }
                     this.sessionIncorrect++;
                     this.recordReview(card.id, false, lettersRevealed);
@@ -730,16 +763,17 @@ class ReviewModal extends obsidian.Modal {
             } else if (correct) {
                 feedback.addClass('symbolink-correct');
                 feedback.removeClass('symbolink-incorrect');
-                feedback.createEl('div', { text: '✓ Easy (No hints)!', cls: 'symbolink-fb-result' });
+                feedback.createEl('div', { text: '✓ Łatwe (Bez podpowiedzi)!', cls: 'symbolink-fb-result' });
                 this.sessionCorrect++;
                 this.recordReview(card.id, true, 0);
             } else {
                 feedback.addClass('symbolink-incorrect');
                 feedback.removeClass('symbolink-correct');
-                feedback.createEl('div', { text: '✗ Wrong', cls: 'symbolink-fb-result' });
-                feedback.createEl('div', { text: `Answer: ${card.answer}`, cls: 'symbolink-fb-answer' });
+                feedback.createEl('div', { text: '✗ Błędnie', cls: 'symbolink-fb-result' });
+                feedback.createEl('div', { text: `Odpowiedź: ${card.answer}`, cls: 'symbolink-fb-answer' });
                 if (given.trim() !== '') {
-                    feedback.createEl('div', { text: `Your answer: ${given}`, cls: 'symbolink-fb-given' });
+                    const givenDiv = feedback.createDiv({ cls: 'symbolink-fb-given' });
+                    givenDiv.innerHTML = `Twoja odpowiedź: ${generateDiffHtml(given, card.answer)}`;
                 }
                 this.sessionIncorrect++;
                 this.recordReview(card.id, false, 0);
@@ -851,20 +885,20 @@ class ReviewModal extends obsidian.Modal {
         const pct = total > 0 ? Math.round((this.sessionCorrect / total) * 100) : 0;
 
         const summary = contentEl.createDiv({ cls: 'symbolink-summary' });
-        summary.createEl('h2', { text: 'Session complete' });
-        summary.createEl('div', { text: `Correct: ${this.sessionCorrect}`, cls: 'symbolink-summary-correct' });
-        summary.createEl('div', { text: `Wrong: ${this.sessionIncorrect}`, cls: 'symbolink-summary-incorrect' });
-        summary.createEl('div', { text: `Accuracy: ${pct}%`, cls: 'symbolink-summary-pct' });
+        summary.createEl('h2', { text: 'Sesja zakończona' });
+        summary.createEl('div', { text: `Poprawne: ${this.sessionCorrect}`, cls: 'symbolink-summary-correct' });
+        summary.createEl('div', { text: `Błędne: ${this.sessionIncorrect}`, cls: 'symbolink-summary-incorrect' });
+        summary.createEl('div', { text: `Skuteczność: ${pct}%`, cls: 'symbolink-summary-pct' });
 
         const reviewCount = Object.keys(this.plugin.data.reviews).length;
         const totalCardsCount = this.allCards ? this.allCards.length : 0;
         summary.createEl('div', {
-            text: `Total cards: ${totalCardsCount} · Ever reviewed: ${reviewCount}`,
+            text: `Wszystkie karty: ${totalCardsCount} · Kiedykolwiek powtórzone: ${reviewCount}`,
             cls: 'symbolink-summary-total'
         });
 
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
-        const againBtn = btnRow.createEl('button', { text: 'Again', cls: 'symbolink-btn symbolink-btn-check' });
+        const againBtn = btnRow.createEl('button', { text: 'Jeszcze raz', cls: 'symbolink-btn symbolink-btn-check' });
         againBtn.addEventListener('click', () => {
             this.currentIndex = 0;
             this.sessionCorrect = 0;
@@ -872,10 +906,10 @@ class ReviewModal extends obsidian.Modal {
             this.onOpen();
         });
 
-        const closeBtn = btnRow.createEl('button', { text: 'Close', cls: 'symbolink-btn symbolink-btn-skip' });
+        const closeBtn = btnRow.createEl('button', { text: 'Zamknij', cls: 'symbolink-btn symbolink-btn-skip' });
         closeBtn.addEventListener('click', () => this.close());
 
-        const statsBtn = btnRow.createEl('button', { text: 'Stats & Heatmap', cls: 'symbolink-btn' });
+        const statsBtn = btnRow.createEl('button', { text: 'Statystyki i Heatmapa', cls: 'symbolink-btn' });
         statsBtn.addEventListener('click', () => {
             this.close();
             new StatsModal(this.app, this.plugin).open();
@@ -917,7 +951,10 @@ class StatsModal extends obsidian.Modal {
         for (const card of allCards) {
             const data = reviews[card.id];
             
-            const cat = card.category || card.fieldTags[0] || card.langTags[0] || 'none';
+            let cat = card.category || card.fieldTags[0] || 'Brak kategorii';
+            if (!card.category && !card.fieldTags[0] && card.langTags[0]) {
+                cat = `Język: ${card.langTags[0].toUpperCase()}`;
+            }
             if (!catStats[cat]) {
                 catStats[cat] = { due: 0, correct: 0, incorrect: 0, total: 0 };
             }
@@ -939,7 +976,7 @@ class StatsModal extends obsidian.Modal {
             catStats[cat].incorrect += data.incorrect;
         }
 
-        contentEl.createEl('h2', { text: 'Symbolink Stats' });
+        contentEl.createEl('h2', { text: 'Statystyki Symbolink' });
 
         const { current, longest, average } = calculateStreaks(this.plugin.data.history || {});
         
@@ -951,21 +988,21 @@ class StatsModal extends obsidian.Modal {
             card.createDiv({ cls: 'symbolink-streak-lbl', text: lbl });
         };
         
-        createStreakCard(`🔥 ${current}`, 'Current Streak');
-        createStreakCard(`🏆 ${longest}`, 'Longest Streak');
-        createStreakCard(`📊 ${average}`, 'Avg. Streak');
+        createStreakCard(`🔥 ${current}`, 'Obecna Seria');
+        createStreakCard(`🏆 ${longest}`, 'Najdłuższa Seria');
+        createStreakCard(`📊 ${average}`, 'Średnia Seria');
 
         const heatmapContainer = contentEl.createDiv({ cls: 'symbolink-heatmap-container' });
         
         const heatmapHeader = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-header' });
-        heatmapHeader.createEl('h3', { text: 'Review History', cls: 'symbolink-heatmap-title' });
+        heatmapHeader.createEl('h3', { text: 'Historia Powtórek', cls: 'symbolink-heatmap-title' });
         const legend = heatmapHeader.createDiv({ cls: 'symbolink-heatmap-legend' });
-        legend.createEl('span', { text: 'Less' });
+        legend.createEl('span', { text: 'Mniej' });
         [0, 1, 2, 3, 4].forEach(lvl => {
             const lCell = legend.createDiv({ cls: `symbolink-heatmap-day level-${lvl}` });
             if (lvl === 0) lCell.addClass('empty');
         });
-        legend.createEl('span', { text: 'More' });
+        legend.createEl('span', { text: 'Więcej' });
 
         const heatmapScroll = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-scroll' });
         const heatmapGrid = heatmapScroll.createDiv({ cls: 'symbolink-heatmap-grid' });
@@ -1010,7 +1047,7 @@ class StatsModal extends obsidian.Modal {
             for (const d of week) {
                 const dayCell = weekCol.createDiv({ cls: 'symbolink-heatmap-day' });
                 if (d) {
-                    const dateStr = d.toISOString().slice(0, 10);
+                    const dateStr = toLocalString(d);
                     const entry = history[dateStr];
                     const count = getCount(entry);
                     
@@ -1047,21 +1084,28 @@ class StatsModal extends obsidian.Modal {
             row.createEl('span', { text: String(value), cls: 'symbolink-stat-value' });
         };
 
-        addStat('Total cards', allCards.length);
-        addStat('New (never reviewed)', newCount);
-        addStat('Due today', dueCount);
-        addStat('Correct answers', totalCorrect);
-        addStat('Wrong answers', totalIncorrect);
-        addStat('Accuracy', totalCorrect + totalIncorrect > 0
+        addStat('Wszystkie karty', allCards.length);
+        addStat('Nowe (nigdy nie powtarzane)', newCount);
+        addStat('Na dziś', dueCount);
+        addStat('Poprawne odpowiedzi', totalCorrect);
+        addStat('Błędne odpowiedzi', totalIncorrect);
+        addStat('Skuteczność', totalCorrect + totalIncorrect > 0
             ? Math.round(totalCorrect / (totalCorrect + totalIncorrect) * 100) + '%'
-            : 'no data');
+            : 'brak danych');
 
-        contentEl.createEl('h3', { text: 'Category Performance' });
+        contentEl.createEl('h3', { text: 'Wyniki w Kategoriach' });
         const catGrid = contentEl.createDiv({ cls: 'symbolink-stats-grid symbolink-cat-stats-grid' });
         catGrid.style.gridTemplateColumns = '1fr 1fr';
         
-        // Sort categories by total cards descending
-        const sortedCats = Object.entries(catStats).sort((a, b) => b[1].total - a[1].total);
+        // Sort categories: Languages first (alphabetically), then by total descending
+        const sortedCats = Object.entries(catStats).sort((a, b) => {
+            const aIsLang = a[0].startsWith('Język:');
+            const bIsLang = b[0].startsWith('Język:');
+            if (aIsLang && !bIsLang) return -1;
+            if (!aIsLang && bIsLang) return 1;
+            if (aIsLang && bIsLang) return a[0].localeCompare(b[0]);
+            return b[1].total - a[1].total;
+        });
         for (const [cat, stats] of sortedCats) {
             if (stats.total === 0) continue;
             const acc = stats.correct + stats.incorrect > 0 
@@ -1070,15 +1114,15 @@ class StatsModal extends obsidian.Modal {
             
             const row = catGrid.createDiv({ cls: 'symbolink-stat-row' });
             row.createEl('span', { text: cat, cls: 'symbolink-stat-label' });
-            row.createEl('span', { text: `Acc: ${acc} | Due: ${stats.due}`, cls: 'symbolink-stat-value' });
+            row.createEl('span', { text: `Skuteczność: ${acc} | Na dziś: ${stats.due}`, cls: 'symbolink-stat-value' });
         }
 
-        contentEl.createEl('h3', { text: 'Box distribution' });
+        contentEl.createEl('h3', { text: 'Rozkład Pudełek' });
         const boxDiv = contentEl.createDiv({ cls: 'symbolink-box-chart' });
         for (let i = 0; i < BOX_INTERVALS.length; i++) {
             const row = boxDiv.createDiv({ cls: 'symbolink-box-row' });
             row.createEl('span', {
-                text: `Box ${i} (${BOX_INTERVALS[i]}d)`,
+                text: `Pudełko ${i} (${BOX_INTERVALS[i]}d)`,
                 cls: 'symbolink-box-label'
             });
             const bar = row.createDiv({ cls: 'symbolink-box-bar-bg' });
@@ -1091,11 +1135,11 @@ class StatsModal extends obsidian.Modal {
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
         btnRow.style.marginTop = '20px';
         const resetBtn = btnRow.createEl('button', {
-            text: 'Reset progress',
+            text: 'Zresetuj postępy',
             cls: 'symbolink-btn symbolink-btn-skip'
         });
         const browserBtn = btnRow.createEl('button', {
-            text: 'Card Browser',
+            text: 'Przeglądarka Kart',
             cls: 'symbolink-btn'
         });
         browserBtn.style.marginLeft = '10px';
@@ -1104,11 +1148,11 @@ class StatsModal extends obsidian.Modal {
             new CardBrowserModal(this.app, this.plugin).open();
         });
         resetBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to delete all review data?')) {
+            if (confirm('Czy na pewno chcesz usunąć wszystkie dane powtórek?')) {
                 this.plugin.data.reviews = {};
                 this.plugin.data.history = {};
                 this.plugin.saveData(this.plugin.data);
-                new obsidian.Notice('Progress reset');
+                new obsidian.Notice('Postępy zresetowane');
                 this.onOpen();
             }
         });
@@ -1146,7 +1190,7 @@ class CardBrowserModal extends obsidian.Modal {
 
         const searchInput = contentEl.createEl('input', {
             type: 'text',
-            placeholder: 'Search cards...',
+            placeholder: 'Szukaj kart...',
             cls: 'symbolink-browser-search'
         });
         searchInput.style.marginBottom = '15px';
@@ -1230,14 +1274,14 @@ class CardBrowserModal extends obsidian.Modal {
         const tr = thead.createEl('tr');
         
         const cols = [
-            { id: 'question', label: 'Question / Name' },
-            { id: 'type', label: 'Type' },
-            { id: 'category', label: 'Category' },
-            { id: 'box', label: 'Box' },
-            { id: 'reviews', label: 'Reviews' },
-            { id: 'lastReview', label: 'Last Review' },
-            { id: 'nextReview', label: 'Next Review' },
-            { id: 'accuracy', label: 'Accuracy' },
+            { id: 'question', label: 'Pytanie / Nazwa' },
+            { id: 'type', label: 'Typ' },
+            { id: 'category', label: 'Kategoria' },
+            { id: 'box', label: 'Pudełko' },
+            { id: 'reviews', label: 'Powtórki' },
+            { id: 'lastReview', label: 'Ostatnia powtórka' },
+            { id: 'nextReview', label: 'Następna powtórka' },
+            { id: 'accuracy', label: 'Skuteczność' },
             { id: 'actions', label: '' }
         ];
         
