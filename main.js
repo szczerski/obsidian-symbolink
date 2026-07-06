@@ -282,6 +282,7 @@ async function buildCards(app, settings) {
 
                 currentCard = {
                     id: `${file.path}::line::${i}`,
+                    sourcePath: file.path,
                     category: formattedCategory,
                     question: calloutMatch[2].trim(),
                     answer: '',
@@ -299,6 +300,8 @@ async function buildCards(app, settings) {
                     const answerMatch = line.match(/\[\[(.+?)\]\]/);
                     if (answerMatch) {
                         currentCard.answer = answerMatch[1].trim();
+                        const safeQuestion = currentCard.question.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30);
+                        currentCard.id = `${currentCard.answer}::${file.basename}::${safeQuestion}`;
                         cards.push(currentCard);
                         currentCard = null; // Card is complete, reset
                     }
@@ -871,10 +874,16 @@ class ReviewModal extends obsidian.Modal {
         });
 
         openBtn.addEventListener('click', () => {
-            const basePath = card.id.split('::')[0];
-            const file = this.app.vault.getAbstractFileByPath(basePath);
-            if (file) {
-                this.app.workspace.getLeaf('tab').openFile(file);
+            let fileToOpen = null;
+            if (card.answer) {
+                fileToOpen = this.app.metadataCache.getFirstLinkpathDest(card.answer, "");
+            }
+            if (!fileToOpen) {
+                const basePath = card.sourcePath || card.id.split('::')[0];
+                fileToOpen = this.app.vault.getAbstractFileByPath(basePath);
+            }
+            if (fileToOpen) {
+                this.app.workspace.getLeaf('tab').openFile(fileToOpen);
             }
         });
 
@@ -1150,23 +1159,41 @@ class StatsModal extends obsidian.Modal {
         const catGrid = contentEl.createDiv({ cls: 'symbolink-stats-grid symbolink-cat-stats-grid' });
         catGrid.style.gridTemplateColumns = '1fr 1fr';
         
-        // Sort categories: Languages first (alphabetically), then by total descending
+        // Sort categories by due (descending), then accuracy (descending), then alphabetically
         const sortedCats = Object.entries(catStats).sort((a, b) => {
-            const aIsLang = a[0].startsWith('Język:');
-            const bIsLang = b[0].startsWith('Język:');
-            if (aIsLang && !bIsLang) return -1;
-            if (!aIsLang && bIsLang) return 1;
-            if (aIsLang && bIsLang) return a[0].localeCompare(b[0]);
-            return b[1].total - a[1].total;
+            if (b[1].due !== a[1].due) {
+                return b[1].due - a[1].due;
+            }
+            const accA = a[1].correct + a[1].incorrect > 0 ? a[1].correct / (a[1].correct + a[1].incorrect) : -1;
+            const accB = b[1].correct + b[1].incorrect > 0 ? b[1].correct / (b[1].correct + b[1].incorrect) : -1;
+            if (accB !== accA) {
+                return accB - accA;
+            }
+            return a[0].localeCompare(b[0]);
         });
+
+        const flags = {
+            'EN': '🇬🇧', 'ES': '🇪🇸', 'DE': '🇩🇪', 'FR': '🇫🇷', 
+            'IT': '🇮🇹', 'PT': '🇵🇹', 'RU': '🇷🇺', 'ZH': '🇨🇳', 
+            'JA': '🇯🇵', 'AR': '🇸🇦', 'KO': '🇰🇷', 'PL': '🇵🇱'
+        };
+
         for (const [cat, stats] of sortedCats) {
             if (stats.total === 0) continue;
+            
+            let displayCat = cat;
+            let flagKey = cat;
+            if (cat.startsWith('Język: ')) flagKey = cat.replace('Język: ', '');
+            if (flags[flagKey]) {
+                displayCat = `${flags[flagKey]} ${cat}`;
+            }
+
             const acc = stats.correct + stats.incorrect > 0 
                 ? Math.round(stats.correct / (stats.correct + stats.incorrect) * 100) + '%'
                 : '-';
             
             const row = catGrid.createDiv({ cls: 'symbolink-stat-row' });
-            row.createEl('span', { text: cat, cls: 'symbolink-stat-label' });
+            row.createEl('span', { text: displayCat, cls: 'symbolink-stat-label' });
             row.createEl('span', { text: `Skuteczność: ${acc} | Na dziś: ${stats.due}`, cls: 'symbolink-stat-value' });
         }
 
@@ -1258,6 +1285,14 @@ class CardBrowserModal extends obsidian.Modal {
         
         this.allCards = await buildCards(this.app, this.plugin.settings);
         
+        const answerCounts = {};
+        for (const c of this.allCards) {
+            const ans = c.answer || '';
+            if (ans) {
+                answerCounts[ans] = (answerCounts[ans] || 0) + 1;
+            }
+        }
+        
         // Merge with review data
         this.browserCards = this.allCards.map(c => {
             const data = this.plugin.data.reviews[c.id] || {
@@ -1271,11 +1306,22 @@ class CardBrowserModal extends obsidian.Modal {
             let q = c.question || c.answer || c.id;
             if (q.length > 50) q = q.substring(0, 50) + '...';
             
+            let cat = c.category || c.fieldTags[0] || c.langTags[0] || 'none';
+            // Add flag emojis for languages
+            const flags = {
+                'EN': '🇬🇧 EN', 'ES': '🇪🇸 ES', 'DE': '🇩🇪 DE', 'FR': '🇫🇷 FR', 
+                'IT': '🇮🇹 IT', 'PT': '🇵🇹 PT', 'RU': '🇷🇺 RU', 'ZH': '🇨🇳 ZH', 
+                'JA': '🇯🇵 JA', 'AR': '🇸🇦 AR', 'KO': '🇰🇷 KO', 'PL': '🇵🇱 PL'
+            };
+            if (flags[cat]) cat = flags[cat];
+            
             return {
                 id: c.id,
                 type: c.type,
                 question: q,
-                category: c.category || c.fieldTags[0] || c.langTags[0] || 'none',
+                answer: c.answer || '',
+                backlinksCount: c.answer ? (answerCounts[c.answer] || 0) : 0,
+                category: cat,
                 box: data.box,
                 lastReview: data.lastReview,
                 nextReview: data.nextReview,
@@ -1328,6 +1374,8 @@ class CardBrowserModal extends obsidian.Modal {
         
         const cols = [
             { id: 'question', label: 'Pytanie / Nazwa' },
+            { id: 'answer', label: 'Baza' },
+            { id: 'backlinksCount', label: 'Powiązania' },
             { id: 'type', label: 'Typ' },
             { id: 'category', label: 'Kategoria' },
             { id: 'box', label: 'Pudełko' },
@@ -1372,6 +1420,23 @@ class CardBrowserModal extends obsidian.Modal {
                 this.close();
             });
             
+            // Make answer clickable to open note
+            const aTd = row.createEl('td', { text: bc.answer, cls: 'symbolink-browser-a' });
+            if (bc.answer) {
+                aTd.style.cursor = 'pointer';
+                aTd.style.color = 'var(--text-accent)';
+                aTd.addEventListener('click', () => {
+                    let fileToOpen = this.app.metadataCache.getFirstLinkpathDest(bc.answer, "");
+                    if (fileToOpen) {
+                        this.app.workspace.getLeaf('tab').openFile(fileToOpen);
+                    } else {
+                        // Fallback to searching by string or just opening link text
+                        this.app.workspace.openLinkText(bc.answer, '', true);
+                    }
+                    this.close();
+                });
+            }
+            row.createEl('td', { text: String(bc.backlinksCount) });
             row.createEl('td', { text: bc.type });
             row.createEl('td', { text: bc.category });
             row.createEl('td', { text: String(bc.box) });
