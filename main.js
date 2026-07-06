@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS = {
     filterFolder: '',
     filterLang: '',
     filterField: '',
+    dailyGoalNewCards: 30,
+    dailyGoalReviews: 50,
 };
 
 /* ───────────────────────────────────────────
@@ -222,6 +224,7 @@ async function buildCards(app, settings) {
                     fieldTags: fieldTags,
                     type: 'standard',
                     mtime: file.stat.mtime,
+                    ctime: file.stat.ctime,
                 });
             }
 
@@ -235,6 +238,7 @@ async function buildCards(app, settings) {
                     fieldTags: fieldTags,
                     type: 'image_only',
                     mtime: file.stat.mtime,
+                    ctime: file.stat.ctime,
                 });
             }
 
@@ -252,6 +256,7 @@ async function buildCards(app, settings) {
                     fieldTags: fieldTags,
                     type: 'alias_to_name',
                     mtime: file.stat.mtime,
+                    ctime: file.stat.ctime,
                 });
             }
         }
@@ -290,6 +295,7 @@ async function buildCards(app, settings) {
                     fieldTags: isLanguage ? [] : [formattedCategory], // Map non-languages to field tag for filtering
                     langTags: isLanguage ? [formattedCategory] : [],   // Map languages to lang tags
                     mtime: file.stat.mtime,
+                    ctime: file.stat.ctime,
                 };
                 continue;
             }
@@ -1008,10 +1014,22 @@ class StatsModal extends obsidian.Modal {
         let totalIncorrect = 0;
         const boxCounts = new Array(BOX_INTERVALS.length).fill(0);
         
+        let createdTodayCount = 0;
+        let modifiedTodayCount = 0;
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartMs = todayStart.getTime();
+
         const catStats = {};
 
         for (const card of allCards) {
             const data = reviews[card.id];
+            
+            if (card.ctime >= todayStartMs) {
+                createdTodayCount++;
+            } else if (card.mtime >= todayStartMs) {
+                modifiedTodayCount++;
+            }
             
             let cat = card.category || card.fieldTags[0] || 'Brak kategorii';
             if (!card.category && !card.fieldTags[0] && card.langTags[0]) {
@@ -1040,6 +1058,39 @@ class StatsModal extends obsidian.Modal {
 
         contentEl.createEl('h2', { text: 'Statystyki Symbolink' });
 
+        const reviewedTodayCount = getCount((this.plugin.data.history || {})[now]);
+        
+        contentEl.createEl('h3', { text: 'Cele Dzienne', attr: { style: 'margin-top: 0;' } });
+        
+        const goalsContainer = contentEl.createDiv({ cls: 'symbolink-goals-container' });
+        goalsContainer.style.display = 'flex';
+        goalsContainer.style.gap = '20px';
+        goalsContainer.style.marginBottom = '25px';
+        
+        const renderGoal = (title, current, target) => {
+            const el = goalsContainer.createDiv({ cls: 'symbolink-goal-card' });
+            el.style.flex = '1';
+            el.style.padding = '15px';
+            el.style.border = '1px solid var(--background-modifier-border)';
+            el.style.borderRadius = '8px';
+            el.style.textAlign = 'center';
+            el.style.backgroundColor = 'var(--background-secondary)';
+            
+            el.createDiv({ text: title, attr: { style: 'font-size: 0.9em; color: var(--text-muted); margin-bottom: 8px;' }});
+            
+            const isCompleted = current >= target;
+            const color = isCompleted ? 'var(--text-success)' : 'var(--text-accent)';
+            
+            el.createDiv({ text: `${current} / ${target}`, attr: { style: `font-size: 1.8em; font-weight: bold; color: ${color}; margin-bottom: 12px;` }});
+            
+            const barBg = el.createDiv({ attr: { style: 'width: 100%; height: 8px; background: var(--background-modifier-border); border-radius: 4px; overflow: hidden;' }});
+            const pct = Math.min(100, target > 0 ? (current / target) * 100 : 100);
+            barBg.createDiv({ attr: { style: `width: ${pct}%; height: 100%; background: ${color}; transition: width 0.3s ease;` }});
+        };
+        
+        renderGoal('Nowe karty dodane', createdTodayCount, this.plugin.settings.dailyGoalNewCards);
+        renderGoal('Powtórki zrobione', reviewedTodayCount, this.plugin.settings.dailyGoalReviews);
+
         const { current, longest, average } = calculateStreaks(this.plugin.data.history || {});
         
         const streaksContainer = contentEl.createDiv({ cls: 'symbolink-streaks-container' });
@@ -1054,22 +1105,15 @@ class StatsModal extends obsidian.Modal {
         createStreakCard(`🏆 ${longest}`, 'Najdłuższa Seria');
         createStreakCard(`📊 ${average}`, 'Średnia Seria');
 
-        const heatmapContainer = contentEl.createDiv({ cls: 'symbolink-heatmap-container' });
-        
-        const heatmapHeader = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-header' });
-        heatmapHeader.createEl('h3', { text: 'Historia Powtórek', cls: 'symbolink-heatmap-title' });
-        const legend = heatmapHeader.createDiv({ cls: 'symbolink-heatmap-legend' });
-        legend.createEl('span', { text: 'Mniej' });
-        [0, 1, 2, 3, 4].forEach(lvl => {
-            const lCell = legend.createDiv({ cls: `symbolink-heatmap-day level-${lvl}` });
-            if (lvl === 0) lCell.addClass('empty');
-        });
-        legend.createEl('span', { text: 'Więcej' });
-
-        const heatmapScroll = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-scroll' });
-        const heatmapGrid = heatmapScroll.createDiv({ cls: 'symbolink-heatmap-grid' });
-
         const history = this.plugin.data.history || {};
+        const creationHistory = {};
+        for (const card of allCards) {
+            if (card.ctime) {
+                const dateStr = toLocalString(new Date(card.ctime));
+                creationHistory[dateStr] = (creationHistory[dateStr] || 0) + 1;
+            }
+        }
+
         const todayDate = new Date();
         const start = new Date();
         start.setDate(start.getDate() - 364);
@@ -1104,39 +1148,62 @@ class StatsModal extends obsidian.Modal {
             weeks.push(currentWeek);
         }
 
-        for (const week of weeks) {
-            const weekCol = heatmapGrid.createDiv({ cls: 'symbolink-heatmap-week' });
-            for (const d of week) {
-                const dayCell = weekCol.createDiv({ cls: 'symbolink-heatmap-day' });
-                if (d) {
-                    const dateStr = toLocalString(d);
-                    const entry = history[dateStr];
-                    const count = getCount(entry);
-                    
-                    dayCell.setAttribute('title', `${dateStr}: ${count} reviews`);
-                    
-                    let level = 0;
-                    if (count > 0 && count < 5) level = 1;
-                    else if (count >= 5 && count < 10) level = 2;
-                    else if (count >= 10 && count < 20) level = 3;
-                    else if (count >= 20) level = 4;
-                    
-                    if (level > 0) {
-                        dayCell.addClass(`level-${level}`);
+        const renderHeatmap = (title, dataObj, isCreation) => {
+            const heatmapContainer = contentEl.createDiv({ cls: 'symbolink-heatmap-container' });
+            
+            const heatmapHeader = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-header' });
+            heatmapHeader.createEl('h3', { text: title, cls: 'symbolink-heatmap-title' });
+            const legend = heatmapHeader.createDiv({ cls: 'symbolink-heatmap-legend' });
+            legend.createEl('span', { text: 'Mniej' });
+            [0, 1, 2, 3, 4].forEach(lvl => {
+                const lCell = legend.createDiv({ cls: `symbolink-heatmap-day level-${lvl}` });
+                if (lvl === 0) lCell.addClass('empty');
+            });
+            legend.createEl('span', { text: 'Więcej' });
+
+            const heatmapScroll = heatmapContainer.createDiv({ cls: 'symbolink-heatmap-scroll' });
+            const heatmapGrid = heatmapScroll.createDiv({ cls: 'symbolink-heatmap-grid' });
+
+            for (const week of weeks) {
+                const weekCol = heatmapGrid.createDiv({ cls: 'symbolink-heatmap-week' });
+                for (const d of week) {
+                    const dayCell = weekCol.createDiv({ cls: 'symbolink-heatmap-day' });
+                    if (d) {
+                        const dateStr = toLocalString(d);
+                        let count = 0;
+                        if (isCreation) {
+                            count = dataObj[dateStr] || 0;
+                        } else {
+                            count = getCount(dataObj[dateStr]);
+                        }
+                        
+                        dayCell.setAttribute('title', `${dateStr}: ${count} ${isCreation ? 'dodanych kart' : 'powtórek'}`);
+                        
+                        let level = 0;
+                        if (count > 0 && count < 5) level = 1;
+                        else if (count >= 5 && count < 10) level = 2;
+                        else if (count >= 10 && count < 20) level = 3;
+                        else if (count >= 20) level = 4;
+                        
+                        if (level > 0) {
+                            dayCell.addClass(`level-${level}`);
+                        } else {
+                            dayCell.addClass('empty');
+                        }
                     } else {
                         dayCell.addClass('empty');
+                        dayCell.style.opacity = '0';
                     }
-                } else {
-                    dayCell.addClass('empty');
-                    dayCell.style.opacity = '0';
                 }
             }
-        }
 
-        // Scroll to the end (right side) of the heatmap so today is visible
-        setTimeout(() => {
-            heatmapScroll.scrollLeft = heatmapScroll.scrollWidth;
-        }, 50);
+            setTimeout(() => {
+                heatmapScroll.scrollLeft = heatmapScroll.scrollWidth;
+            }, 50);
+        };
+
+        renderHeatmap('Historia Powtórek', history, false);
+        renderHeatmap('Historia Dodanych Kart', creationHistory, true);
 
         const grid = contentEl.createDiv({ cls: 'symbolink-stats-grid' });
 
@@ -1147,6 +1214,8 @@ class StatsModal extends obsidian.Modal {
         };
 
         addStat('Wszystkie karty', allCards.length);
+        addStat('Utworzone dzisiaj', createdTodayCount);
+        addStat('Zmodyfikowane dzisiaj', modifiedTodayCount);
         addStat('Nowe (nigdy nie powtarzane)', newCount);
         addStat('Na dziś', dueCount);
         addStat('Poprawne odpowiedzi', totalCorrect);
@@ -1497,6 +1566,32 @@ class SymbolinkSettingTab extends obsidian.PluginSettingTab {
                     const n = parseInt(value);
                     if (!isNaN(n) && n > 0) {
                         this.plugin.settings.cardsPerSession = n;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new obsidian.Setting(containerEl)
+            .setName('Daily goal: New cards')
+            .setDesc('Target number of newly created cards per day')
+            .addText(text => text
+                .setValue(String(this.plugin.settings.dailyGoalNewCards))
+                .onChange(async (value) => {
+                    const n = parseInt(value);
+                    if (!isNaN(n) && n >= 0) {
+                        this.plugin.settings.dailyGoalNewCards = n;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new obsidian.Setting(containerEl)
+            .setName('Daily goal: Reviews')
+            .setDesc('Target number of cards to review per day')
+            .addText(text => text
+                .setValue(String(this.plugin.settings.dailyGoalReviews))
+                .onChange(async (value) => {
+                    const n = parseInt(value);
+                    if (!isNaN(n) && n >= 0) {
+                        this.plugin.settings.dailyGoalReviews = n;
                         await this.plugin.saveSettings();
                     }
                 }));
