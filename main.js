@@ -221,6 +221,7 @@ async function buildCards(app, settings) {
                     langTags: langTags,
                     fieldTags: fieldTags,
                     type: 'standard',
+                    mtime: file.stat.mtime,
                 });
             }
 
@@ -233,6 +234,7 @@ async function buildCards(app, settings) {
                     langTags: langTags,
                     fieldTags: fieldTags,
                     type: 'image_only',
+                    mtime: file.stat.mtime,
                 });
             }
 
@@ -249,6 +251,7 @@ async function buildCards(app, settings) {
                     langTags: langTags,
                     fieldTags: fieldTags,
                     type: 'alias_to_name',
+                    mtime: file.stat.mtime,
                 });
             }
         }
@@ -284,7 +287,8 @@ async function buildCards(app, settings) {
                     answer: '',
                     type: 'callout_quiz',
                     fieldTags: isLanguage ? [] : [formattedCategory], // Map non-languages to field tag for filtering
-                    langTags: isLanguage ? [formattedCategory] : []   // Map languages to lang tags
+                    langTags: isLanguage ? [formattedCategory] : [],   // Map languages to lang tags
+                    mtime: file.stat.mtime,
                 };
                 continue;
             }
@@ -386,6 +390,7 @@ class SessionConfigModal extends obsidian.Modal {
         let includeImageOnly = false;
         let includeAlias = false;
         let includeCallouts = true;
+        let filterModified = 'all';
 
         const allCards = await buildCards(this.app, s);
         const langSet = new Set();
@@ -407,6 +412,23 @@ class SessionConfigModal extends obsidian.Modal {
                 .setValue(count)
                 .setDynamicTooltip()
                 .onChange(v => count = v));
+
+        new obsidian.Setting(contentEl)
+            .setName('Zakres czasowy kart')
+            .setDesc('Filtruj karty po dacie ostatniej modyfikacji notatki')
+            .addDropdown(drop => drop
+                .addOption('all', 'Wszystkie')
+                .addOption('today', 'Dzisiaj')
+                .addOption('yesterday', 'Wczoraj')
+                .addOption('3days', 'Ostatnie 3 dni')
+                .addOption('7days', 'Ostatnie 7 dni')
+                .addOption('30days', 'Ostatnie 30 dni')
+                .addOption('60days', 'Ostatnie 60 dni')
+                .addOption('180days', 'Ostatnie 180 dni')
+                .addOption('365days', 'Ostatnie 365 dni')
+                .setValue(filterModified)
+                .onChange(v => filterModified = v)
+            );
 
         // Category filter UI generator
         const makeBtnGroup = (title, current, onChange) => {
@@ -472,6 +494,7 @@ class SessionConfigModal extends obsidian.Modal {
                 cardsPerSession: count,
                 filterLang,
                 filterField,
+                filterModified,
                 includeStandard,
                 includeImageOnly,
                 includeAlias,
@@ -516,6 +539,12 @@ class ReviewModal extends obsidian.Modal {
         let allCards = await buildCards(this.app, this.plugin.settings);
         this.allCards = allCards;
         if (sc) {
+            const nowMs = Date.now();
+            const startOfToday = new Date(nowMs);
+            startOfToday.setHours(0, 0, 0, 0);
+            const startOfTodayMs = startOfToday.getTime();
+            const startOfYesterdayMs = startOfTodayMs - 86400000;
+
             allCards = allCards.filter(c => {
                 if (c.type === 'standard' && !sc.includeStandard) return false;
                 if (c.type === 'image_only' && !sc.includeImageOnly) return false;
@@ -523,6 +552,30 @@ class ReviewModal extends obsidian.Modal {
                 if (c.type === 'callout_quiz' && !sc.includeCallouts) return false;
                 if (sc.filterLang && !c.langTags.includes(sc.filterLang)) return false;
                 if (sc.filterField && !c.fieldTags.includes(sc.filterField)) return false;
+                
+                if (sc.filterModified && sc.filterModified !== 'all') {
+                    const mtime = c.mtime;
+                    if (!mtime) return false;
+                    
+                    if (sc.filterModified === 'today') {
+                        if (mtime < startOfTodayMs) return false;
+                    } else if (sc.filterModified === 'yesterday') {
+                        if (mtime < startOfYesterdayMs || mtime >= startOfTodayMs) return false;
+                    } else if (sc.filterModified === '3days') {
+                        if (mtime < startOfTodayMs - 2 * 86400000) return false;
+                    } else if (sc.filterModified === '7days') {
+                        if (mtime < startOfTodayMs - 6 * 86400000) return false;
+                    } else if (sc.filterModified === '30days') {
+                        if (mtime < startOfTodayMs - 29 * 86400000) return false;
+                    } else if (sc.filterModified === '60days') {
+                        if (mtime < startOfTodayMs - 59 * 86400000) return false;
+                    } else if (sc.filterModified === '180days') {
+                        if (mtime < startOfTodayMs - 179 * 86400000) return false;
+                    } else if (sc.filterModified === '365days') {
+                        if (mtime < startOfTodayMs - 364 * 86400000) return false;
+                    }
+                }
+                
                 return true;
             });
         }
