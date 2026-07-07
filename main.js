@@ -1058,7 +1058,9 @@ class StatsModal extends obsidian.Modal {
 
         contentEl.createEl('h2', { text: 'Statystyki Symbolink' });
 
-        const reviewedTodayCount = getCount((this.plugin.data.history || {})[now]);
+        const todayHist = (this.plugin.data.history || {})[now] || { correct: 0, incorrect: 0 };
+        const correctTodayCount = todayHist.correct || 0;
+        const incorrectTodayCount = todayHist.incorrect || 0;
         
         contentEl.createEl('h3', { text: 'Cele Dzienne', attr: { style: 'margin-top: 0;' } });
         
@@ -1066,10 +1068,12 @@ class StatsModal extends obsidian.Modal {
         goalsContainer.style.display = 'flex';
         goalsContainer.style.gap = '20px';
         goalsContainer.style.marginBottom = '25px';
+        goalsContainer.style.flexWrap = 'wrap';
         
         const renderGoal = (title, current, target) => {
             const el = goalsContainer.createDiv({ cls: 'symbolink-goal-card' });
             el.style.flex = '1';
+            el.style.minWidth = '120px';
             el.style.padding = '15px';
             el.style.border = '1px solid var(--background-modifier-border)';
             el.style.borderRadius = '8px';
@@ -1078,18 +1082,23 @@ class StatsModal extends obsidian.Modal {
             
             el.createDiv({ text: title, attr: { style: 'font-size: 0.9em; color: var(--text-muted); margin-bottom: 8px;' }});
             
-            const isCompleted = current >= target;
-            const color = isCompleted ? 'var(--text-success)' : 'var(--text-accent)';
-            
-            el.createDiv({ text: `${current} / ${target}`, attr: { style: `font-size: 1.8em; font-weight: bold; color: ${color}; margin-bottom: 12px;` }});
-            
-            const barBg = el.createDiv({ attr: { style: 'width: 100%; height: 8px; background: var(--background-modifier-border); border-radius: 4px; overflow: hidden;' }});
-            const pct = Math.min(100, target > 0 ? (current / target) * 100 : 100);
-            barBg.createDiv({ attr: { style: `width: ${pct}%; height: 100%; background: ${color}; transition: width 0.3s ease;` }});
+            if (target !== null && target !== undefined) {
+                const isCompleted = current >= target;
+                const color = isCompleted ? 'var(--text-success)' : 'var(--text-accent)';
+                
+                el.createDiv({ text: `${current} / ${target}`, attr: { style: `font-size: 1.8em; font-weight: bold; color: ${color}; margin-bottom: 12px;` }});
+                
+                const barBg = el.createDiv({ attr: { style: 'width: 100%; height: 8px; background: var(--background-modifier-border); border-radius: 4px; overflow: hidden;' }});
+                const pct = Math.min(100, target > 0 ? (current / target) * 100 : 100);
+                barBg.createDiv({ attr: { style: `width: ${pct}%; height: 100%; background: ${color}; transition: width 0.3s ease;` }});
+            } else {
+                el.createDiv({ text: `${current}`, attr: { style: `font-size: 1.8em; font-weight: bold; color: var(--text-error); margin-bottom: 12px;` }});
+            }
         };
         
         renderGoal('Nowe karty dodane', createdTodayCount, this.plugin.settings.dailyGoalNewCards);
-        renderGoal('Powtórki zrobione', reviewedTodayCount, this.plugin.settings.dailyGoalReviews);
+        renderGoal('Zaliczone powtórki', correctTodayCount, this.plugin.settings.dailyGoalReviews);
+        renderGoal('Do powtórki (błędy)', incorrectTodayCount, null);
 
         const { current, longest, average } = calculateStreaks(this.plugin.data.history || {});
         
