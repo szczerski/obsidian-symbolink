@@ -643,7 +643,14 @@ class ReviewModal extends obsidian.Modal {
         const hintArea = contentEl.createDiv({ cls: 'symbolink-hints' });
 
         if (card.type === 'callout_quiz') {
-            const qDiv = hintArea.createDiv({ cls: 'symbolink-question' });
+            const calloutDiv = hintArea.createDiv({ cls: 'callout symbolink-callout-question' });
+            calloutDiv.setAttribute('data-callout', card.category.toLowerCase());
+            
+            const calloutTitle = calloutDiv.createDiv({ cls: 'callout-title' });
+            calloutTitle.createDiv({ cls: 'callout-icon' });
+            calloutTitle.createDiv({ cls: 'callout-title-inner', text: card.category });
+            
+            const qDiv = calloutDiv.createDiv({ cls: 'callout-content symbolink-question' });
             
             let questionText = card.question;
             const imgMatches = [...questionText.matchAll(/!\[\[(.+?)\]\]/g)];
