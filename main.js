@@ -50,15 +50,25 @@ function normalize(str) {
 }
 
 function checkAnswer(given, expected, fuzzy) {
+    const options = expected.split('|').map(s => s.trim());
     if (fuzzy) {
-        return normalize(given) === normalize(expected);
+        return options.some(opt => normalize(given) === normalize(opt));
     }
-    return given.trim() === expected.trim();
+    return options.some(opt => given.trim() === opt);
 }
 
 function generateDiffHtml(given, expected) {
+    const options = expected.split('|').map(s => s.trim());
     const givenTrim = given.trim();
-    const expectedTrim = expected.trim();
+    let expectedMatch = options[0];
+    for (const opt of options) {
+        if (normalize(givenTrim) === normalize(opt)) {
+            expectedMatch = opt;
+            break;
+        }
+    }
+    const expectedTrim = expectedMatch;
+
     if (normalize(givenTrim) === normalize(expectedTrim)) {
         return `<span class="symbolink-diff-correct">${given}</span>`;
     }
@@ -544,6 +554,22 @@ class ReviewModal extends obsidian.Modal {
         contentEl.empty();
         contentEl.addClass('symbolink-modal');
 
+        this.scope.register(['Ctrl', 'Shift'], 'H', (e) => {
+            e.preventDefault();
+            if (this.hintBtn && this.hintBtn.style.display !== 'none') this.hintBtn.click();
+            return false;
+        });
+        this.scope.register(['Ctrl', 'Shift'], 'T', (e) => {
+            e.preventDefault();
+            if (this.playBtn && this.playBtn.style.display !== 'none') this.playBtn.click();
+            return false;
+        });
+        this.scope.register(['Ctrl', 'Shift'], 'N', (e) => {
+            e.preventDefault();
+            if (this.skipBtn && this.skipBtn.style.display !== 'none') this.skipBtn.click();
+            return false;
+        });
+
         const sc = this.sessionConfig;
         let allCards = await buildCards(this.app, this.plugin.settings);
         this.allCards = allCards;
@@ -756,6 +782,7 @@ class ReviewModal extends obsidian.Modal {
         // Hint display
         let lettersRevealed = 0;
         let hintUsed = false;
+        const primaryAnswer = card.answer.split('|')[0].trim();
 
         // Input
         const inputArea = contentEl.createDiv({ cls: 'symbolink-input-area' });
@@ -770,7 +797,7 @@ class ReviewModal extends obsidian.Modal {
         const updateHintEl = () => {
             hintEl.style.display = 'block';
             hintEl.setText(
-                card.answer.split('').map((c, i) => i < lettersRevealed ? c : '_').join(' ')
+                primaryAnswer.split('').map((c, i) => i < lettersRevealed ? c : '_').join(' ')
             );
         };
 
@@ -781,18 +808,80 @@ class ReviewModal extends obsidian.Modal {
         // Buttons
         const btnRow = contentEl.createDiv({ cls: 'symbolink-buttons' });
         const checkBtn = btnRow.createEl('button', { text: 'Sprawdź', cls: 'symbolink-btn symbolink-btn-check' });
-        const hintBtn = btnRow.createEl('button', { text: 'Podpowiedź', cls: 'symbolink-btn symbolink-btn-hint' });
-        const skipBtn = btnRow.createEl('button', { text: 'Pomiń', cls: 'symbolink-btn symbolink-btn-skip' });
+        const hintBtn = btnRow.createEl('button', { text: 'Podpowiedź', cls: 'symbolink-btn symbolink-btn-hint', title: 'Podpowiedź (Ctrl+Shift+H)' });
+        const playBtn = btnRow.createEl('button', { text: '🔊', cls: 'symbolink-btn symbolink-btn-play', title: 'Skopiuj i odtwórz (Ctrl+Shift+T)' });
+        this.hintBtn = hintBtn;
+        this.playBtn = playBtn;
+        const skipBtn = btnRow.createEl('button', { text: 'Pomiń', cls: 'symbolink-btn symbolink-btn-skip', title: 'Pomiń (Ctrl+Shift+N)' });
+        this.skipBtn = skipBtn;
         const nextBtn = btnRow.createEl('button', { text: 'Dalej →', cls: 'symbolink-btn symbolink-btn-next' });
         nextBtn.style.display = 'none';
+        const overrideBtn = btnRow.createEl('button', { text: 'Jednak dobrze (literówka)', cls: 'symbolink-btn symbolink-btn-override' });
+        overrideBtn.style.display = 'none';
         const openBtn = btnRow.createEl('button', { text: 'Otwórz kartę', cls: 'symbolink-btn symbolink-btn-open' });
         openBtn.style.display = 'none';
 
         hintBtn.addEventListener('click', () => {
             if (this.revealed) return;
-            if (lettersRevealed < card.answer.length) lettersRevealed++;
+            if (lettersRevealed < primaryAnswer.length) lettersRevealed++;
             hintUsed = true;
             updateHintEl();
+        });
+
+        playBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(primaryAnswer).catch(() => {});
+            const { exec } = require('child_process');
+            
+            let voice = '-v "Samantha"'; // Domyślny wysokiej jakości amerykański głos
+            if (card.langTags && card.langTags.length > 0) {
+                const lang = card.langTags[0].toLowerCase();
+                if (lang.includes('pl')) voice = '-v "Zosia"';
+                else if (lang.includes('gb') || lang.includes('uk')) voice = '-v "Daniel"';
+                else if (lang.includes('es')) voice = '-v "Monica"';
+                else if (lang.includes('fr')) voice = '-v "Thomas"';
+                else if (lang.includes('de')) voice = '-v "Anna"';
+                else if (lang.includes('it')) voice = '-v "Alice"';
+            }
+            
+            exec(`killall say 2>/dev/null; say ${voice} ${JSON.stringify(primaryAnswer)}`);
+        });
+
+        overrideBtn.addEventListener('click', () => {
+            // Wycofaj błąd z sesji i historii
+            const t = today();
+            if (this.plugin.data.history && this.plugin.data.history[t]) {
+                this.plugin.data.history[t].incorrect--;
+                this.plugin.data.history[t].correct++;
+            }
+            this.sessionIncorrect--;
+            this.sessionCorrect++;
+
+            // Przywróć stary stan dla karty (lub usuń, jeśli nowa), by recordReview mogło działać "do przodu"
+            if (this.oldRevData) {
+                this.plugin.data.reviews[card.id] = JSON.parse(JSON.stringify(this.oldRevData));
+            } else {
+                delete this.plugin.data.reviews[card.id];
+            }
+
+            // Zapisz jako poprawne (traktujemy jak odgadnięte z podpowiedziami jeśli były)
+            this.recordReview(card.id, true, lettersRevealed);
+
+            // Odśwież UI
+            feedback.removeClass('symbolink-incorrect');
+            feedback.addClass('symbolink-correct');
+            feedback.empty();
+            feedback.createEl('div', { text: '✓ Uznano za poprawne', cls: 'symbolink-fb-result' });
+            
+            const revData = this.plugin.data.reviews[card.id];
+            if (revData) {
+                const statsEl = feedback.createDiv({ cls: 'symbolink-card-stats-inline' });
+                const totalPlays = revData.correct + revData.incorrect;
+                const acc = totalPlays > 0 ? Math.round((revData.correct / totalPlays) * 100) : 0;
+                statsEl.createEl('div', { text: `📊 Odpowiedzi: ${totalPlays} (Poprawne: ${revData.correct}, Błędne: ${revData.incorrect}) · Trafność: ${acc}%` });
+                statsEl.createEl('div', { text: `📦 Pudełko: ${revData.box} · Następna powtórka: ${revData.nextReview}` });
+            }
+
+            overrideBtn.style.display = 'none';
         });
 
         const doCheck = () => {
@@ -801,6 +890,9 @@ class ReviewModal extends obsidian.Modal {
 
             const given = input.value;
             const correct = checkAnswer(given, card.answer, this.plugin.settings.fuzzyMatch);
+
+            this.oldRevData = this.plugin.data.reviews[card.id] ? JSON.parse(JSON.stringify(this.plugin.data.reviews[card.id])) : null;
+            let isIncorrect = false;
 
             feedback.style.display = 'block';
             feedback.empty();
@@ -820,6 +912,7 @@ class ReviewModal extends obsidian.Modal {
                         this.recordReview(card.id, true, lettersRevealed);
                     }
                 } else {
+                    isIncorrect = true;
                     feedback.createEl('div', { text: '✗ Błędnie', cls: 'symbolink-fb-result' });
                     feedback.createEl('div', { text: `Odpowiedź: ${card.answer}`, cls: 'symbolink-fb-answer' });
                     if (given.trim() !== '') {
@@ -836,6 +929,7 @@ class ReviewModal extends obsidian.Modal {
                 this.sessionCorrect++;
                 this.recordReview(card.id, true, 0);
             } else {
+                isIncorrect = true;
                 feedback.addClass('symbolink-incorrect');
                 feedback.removeClass('symbolink-correct');
                 feedback.createEl('div', { text: '✗ Błędnie', cls: 'symbolink-fb-result' });
@@ -860,6 +954,7 @@ class ReviewModal extends obsidian.Modal {
             checkBtn.style.display = 'none';
             hintBtn.style.display = 'none';
             skipBtn.style.display = 'none';
+            if (isIncorrect) overrideBtn.style.display = 'inline-block';
             nextBtn.style.display = 'inline-block';
             openBtn.style.display = 'inline-block';
         };
